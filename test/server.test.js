@@ -50,6 +50,12 @@ test('unauthenticated and cross-origin mutations are rejected', async () => {
     method:'POST',headers,body:JSON.stringify({ email:'fixture@example.invalid',password:'example-password' })
   });
   assert.equal(signup.status,403);
+  const invalidCpf = await fetch(origin + '/api/signup',{
+    method:'POST',headers:{ ...headers,'X-FD-App':'cliente' },
+    body:JSON.stringify({ cpf:'111.111.111-11',password:'example-password',name:'Cliente teste',phone:'31999999999' })
+  });
+  assert.equal(invalidCpf.status,400);
+  assert.match((await invalidCpf.json()).error,/CPF válido/);
   const provision = await fetch(origin + '/api/provision',{ method:'POST',headers,body:'{}' });
   assert.equal(provision.status,401);
   const updates = await fetch(origin + '/api/order-updates');

@@ -262,3 +262,6 @@ p { line-height:1.5 }
   .auth-visual { min-height:144px; padding:16px; }
   .auth-panel { padding:17px; }
 }
+
+.order-shortcut { display:inline-flex; align-items:center; min-height:42px; padding:0 8px; color:var(--ink); font-size:.89rem; font-weight:800; }
+.order-shortcut:hover { color:var(--orange); }

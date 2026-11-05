@@ -117,15 +117,19 @@ async function activate(input: Record<string,unknown>) {
   return { ok:true };
 }
 
-async function adminLogin(request: Request, input: Record<string,unknown>) {
+async function requireRailway(request: Request) {
   const bridge = request.headers.get('Authorization')?.match(/^Bearer ([A-Za-z0-9_-]{43})$/i)?.[1];
-  if (!bridge) throw new Failure(403,'Configuração administrativa restrita ao servidor.');
+  if (!bridge) throw new Failure(403,'Operação restrita ao servidor.');
   const hashed = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(bridge));
   const digest = Array.from(new Uint8Array(hashed),byte => byte.toString(16).padStart(2,'0')).join('');
   let difference = 0;
   for (let i=0; i<railwayBridgeDigest.length; i++) difference |= digest.charCodeAt(i) ^ railwayBridgeDigest.charCodeAt(i);
-  if (difference !== 0) throw new Failure(403,'Configuração administrativa restrita ao servidor.');
+  if (difference !== 0) throw new Failure(403,'Operação restrita ao servidor.');
 
+}
+
+async function adminLogin(request: Request, input: Record<string,unknown>) {
+  await requireRailway(request);
   const email = typeof input.email === 'string' ? input.email.trim().toLowerCase() : '';
   const password = input.password;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 ||
@@ -155,6 +159,51 @@ async function adminLogin(request: Request, input: Record<string,unknown>) {
   return { access_token,refresh_token,expires_in };
 }
 
+async function customerAuth(request: Request, input: Record<string,unknown>, signup: boolean) {
+  await requireRailway(request);
+  const { loginId,password } = input;
+  if (typeof loginId !== 'string' || !/^[a-f0-9]{40}$/.test(loginId) ||
+    typeof password !== 'string' || password.length < 8 || new TextEncoder().encode(password).length > 72) {
+    throw new Failure(400,'Confira o CPF e a senha.');
+  }
+  const email = 'fd-c-' + loginId + '@fly-delivery-piloto.up.railway.app';
+  if (signup) {
+    const name = typeof input.name === 'string' ? input.name.trim() : '';
+    const phone = typeof input.phone === 'string' ? input.phone : '';
+    if (name.length < 3 || name.length > 120 || !/^[1-9][0-9]{9,10}$/.test(phone)) {
+      throw new Failure(400,'Confira seu nome e celular com DDD.');
+    }
+    const phoneExists = async () => {
+      const result = await call('/rest/v1/rpc/fd_cpf_phone_exists',{ admin:true,body:{ phone_number:phone } });
+      if (!result.response.ok) throw new Failure(503,'O cadastro está indisponível. Tente novamente.');
+      return result.data === true;
+    };
+    if (await phoneExists()) throw new Failure(409,'CPF ou celular já cadastrado. Use Entrar.');
+    const created = await call('/auth/v1/admin/users',{ admin:true,body:{
+      email,password,email_confirm:true,app_metadata:{ fly_delivery_cpf_login:true },
+      user_metadata:{ fly_delivery_customer:{ name,phone } }
+    } });
+    if (!created.response.ok) {
+      const code = created.data?.error_code ?? created.data?.code;
+      if (['email_exists','user_already_exists'].includes(code) || await phoneExists()) {
+        throw new Failure(409,'CPF ou celular já cadastrado. Use Entrar.');
+      }
+      if (code === 'weak_password') throw new Failure(400,'Escolha uma senha mais forte.');
+      if (created.response.status === 429) throw new Failure(429,'Muitas tentativas. Aguarde e tente de novo.');
+      throw new Failure(502,'Não foi possível criar sua conta. Tente novamente.');
+    }
+  }
+
+  const login = await call('/auth/v1/token?grant_type=password',{ body:{ email,password } });
+  if (login.response.status === 429) throw new Failure(429,'Muitas tentativas. Aguarde e tente de novo.');
+  if (!login.response.ok || login.data?.user?.app_metadata?.fly_delivery_cpf_login !== true || !login.data?.access_token) {
+    if (signup) throw new Failure(409,'Conta criada. Use Entrar com seu CPF e sua senha.');
+    throw new Failure(400,'CPF ou senha incorretos.');
+  }
+  const { access_token,refresh_token,expires_in } = login.data;
+  return { access_token,refresh_token,expires_in };
+}
+
 Deno.serve(async request => {
   const headers = { 'Content-Type':'application/json','Cache-Control':'no-store' };
   try {
@@ -164,9 +213,10 @@ Deno.serve(async request => {
     if (raw.length > 16384) throw new Failure(413,'Dados do cadastro muito grandes.');
     const { action,input } = JSON.parse(raw) ?? {};
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Failure(400,'Dados inválidos.');
-    if (action !== 'provision' && action !== 'activate' && action !== 'admin_login') throw new Failure(400,'Ação inválida.');
+    if (!['provision','activate','admin_login','customer_register','customer_login'].includes(action)) throw new Failure(400,'Ação inválida.');
     const result = action === 'provision' ? await provision(request,input) :
-      action === 'activate' ? await activate(input) : await adminLogin(request,input);
+      action === 'activate' ? await activate(input) : action === 'admin_login' ? await adminLogin(request,input) :
+      await customerAuth(request,input,action === 'customer_register');
     return new Response(JSON.stringify(result),{ headers });
   } catch (error) {
     if (error instanceof Failure || error instanceof SyntaxError) {

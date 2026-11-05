@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { RealtimeClient } from '@supabase/realtime-js';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url)).replace(/\/$/, '');
@@ -12,6 +12,7 @@ const googleMapsKey = process.env.GOOGLE_MAPS_BROWSER_KEY?.trim();
 const adminEmail = process.env.FLY_DELIVERY_ADMIN_LOGIN?.trim().toLowerCase();
 const adminPassword = process.env.FLY_DELIVERY_ADMIN_PASSWORD;
 const adminBridge = process.env.FD_ADMIN_BRIDGE_TOKEN;
+const customerLookupKey = process.env.FD_CUSTOMER_LOOKUP_KEY;
 const routes = new Set(['/cliente/', '/loja/', '/entregador/', '/admin/']);
 const mime = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -119,6 +120,17 @@ function isConfiguredAdmin(email,password) {
   return timingSafeEqual(digest(password),digest(adminPassword));
 }
 
+function cpfLoginId(value) {
+  const cpf = typeof value === 'string' ? value.replace(/\D/g,'') : '';
+  const valid = cpf.length === 11 && !/^(\d)\1+$/.test(cpf) && [9,10].every(length => {
+    const sum = Array.from(cpf.slice(0,length)).reduce((total,digit,index) => total + Number(digit)*(length+1-index),0);
+    return ((sum*10)%11)%10 === Number(cpf[length]);
+  });
+  if (!valid) throw new HttpError(400,'Informe um CPF válido.');
+  if (!customerLookupKey || !adminBridge) throw new HttpError(503,'O acesso de clientes está indisponível.');
+  return createHmac('sha256',customerLookupKey).update(cpf).digest('hex').slice(0,40);
+}
+
 function profileFields(input) {
   const name = typeof input?.name === 'string' ? input.name.trim() : '';
   let phone = typeof input?.phone === 'string' ? input.phone.replace(/\D/g,'') : '';
@@ -188,17 +200,32 @@ async function api(req, res, url) {
   }
   if (url.pathname === '/api/login' || url.pathname === '/api/signup') {
     const input = await readJson(req);
+    const signup = url.pathname.endsWith('/signup');
+    if (signup && sessionCookie !== 'fd_cliente_access') {
+      throw new HttpError(403,'O cadastro público é destinado aos clientes.');
+    }
+    if (sessionCookie === 'fd_cliente_access' && (signup || Object.hasOwn(input ?? {},'cpf'))) {
+      const password = input?.password;
+      if (typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password) > 72) {
+        throw new HttpError(400,'Use uma senha com pelo menos 8 caracteres e até 72 bytes.');
+      }
+      const loginId = cpfLoginId(input.cpf);
+      const data = await upstream('/functions/v1/fd-onboarding',{
+        token:adminBridge,body:{ action:signup ? 'customer_register' : 'customer_login',
+          input:{ loginId,password,...(signup ? profileFields(input) : {}) } }
+      });
+      if (!data?.access_token) throw new HttpError(502,'Não foi possível concluir o acesso.');
+      setSession(req,res,data);
+      return json(res,200,{ signedIn:true });
+    }
     const email = typeof input?.email === 'string' ? input.email.trim() : '';
     const password = input?.password;
     if (!email.includes('@') || email.length > 254 || typeof password !== 'string' || password.length < 8 || password.length > 128) {
       throw new HttpError(400, 'Informe um e-mail válido e uma senha de 8 a 128 caracteres.');
     }
-    const signup = url.pathname.endsWith('/signup');
-    if (signup && sessionCookie !== 'fd_cliente_access') throw new HttpError(403, 'O cadastro público é destinado aos clientes.');
-    if (signup && input.confirmation !== password) throw new HttpError(400,'As senhas precisam ser iguais.');
     const credentials = { email,password };
     let data;
-    if (!signup && sessionCookie === 'fd_admin_access' && isConfiguredAdmin(email,password)) {
+    if (sessionCookie === 'fd_admin_access' && isConfiguredAdmin(email,password)) {
       if (password.length < 12 || Buffer.byteLength(password) > 72) {
         throw new HttpError(400,'Use uma senha inicial com pelo menos 12 caracteres e até 72 bytes.');
       }
@@ -208,9 +235,7 @@ async function api(req, res, url) {
       });
     }
     if (!data?.access_token) {
-      data = await upstream(signup ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password', {
-        body:signup ? { ...credentials,data:{ fly_delivery_customer:profileFields(input) } } : credentials
-      });
+      data = await upstream('/auth/v1/token?grant_type=password',{ body:credentials });
     }
     if (data.access_token) setSession(req, res, data);
     return json(res, 200, { signedIn: Boolean(data.access_token) });

@@ -17,14 +17,13 @@ function brand() {
 }
 function header() {
   const clientReady = page === 'cliente' && profile;
-  const linksHtml = clientReady
-    ? '<a href="#inicio">Início</a><a href="#lojas">Restaurantes</a><a href="#pedidos">Meus pedidos</a>'
-    : '<span class="workspace-label">' + esc(titles[page]) + '</span>';
-  $('#top').innerHTML = '<div class="wrap topbar">' + brand() + '<nav class="top-nav" aria-label="Menu principal">' + linksHtml +
-    '</nav><div class="top-actions">' + (page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
+  const workspace = page === 'cliente' ? '' : '<span class="workspace-label">' + esc(titles[page]) + '</span>';
+  $('#top').innerHTML = '<div class="wrap topbar">' + brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
+    (clientReady ? '<a class="order-shortcut" href="#pedidos">Pedidos</a>' : '') +
+    (page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
     (current ? 'Minha conta' : 'Entrar') + '">' + icon('person') + '</button>' : '') +
     (clientReady ? '<a class="cart-button" href="#carrinho" aria-label="Carrinho">' + icon('bag') +
-    '<span id="cart-count">0</span></a>' : '') + '</div></div>';
+    '<span id="cart-count">0</span></a>' : '') + '</nav></div>';
   const button = $('[data-account]');
   if (button) button.onclick = () => current ? account() : auth();
   if (clientReady) app.updateHeader();
@@ -44,8 +43,25 @@ function footer() {
   };
 }
 
-const profileInputs = '<label>Nome completo<input name="name" autocomplete="name" minlength="3" maxlength="120" required></label>' +
-  '<label>Celular com DDD<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(31) 99999-9999" maxlength="24" required></label>';
+const nameInput = '<label>Nome completo<input name="name" autocomplete="name" minlength="3" maxlength="120" required></label>';
+const phoneInput = '<label>Celular com DDD<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(31) 99999-9999" maxlength="15" required></label>';
+const cpfInput = '<label>CPF<input name="cpf" inputmode="numeric" autocomplete="username" placeholder="000.000.000-00" maxlength="14" required></label>';
+
+function formatCustomerFields(form) {
+  const cpf = $('[name=cpf]',form);
+  const phone = $('[name=phone]',form);
+  if (cpf) cpf.addEventListener('input',() => {
+    cpf.value = cpf.value.replace(/\D/g,'').slice(0,11)
+      .replace(/^(\d{3})(?=\d)/,'$1.').replace(/^(\d{3}\.\d{3})(?=\d)/,'$1.')
+      .replace(/^(\d{3}\.\d{3}\.\d{3})(?=\d)/,'$1-');
+  });
+  if (phone) phone.addEventListener('input',() => {
+    const digits = phone.value.replace(/\D/g,'').slice(0,11);
+    phone.value = digits.length <= 2 ? digits : digits.replace(/^(\d{2})(\d{4,5})(\d{4})$/,'($1) $2-$3')
+      .replace(/^([0-9]{2})([0-9]+)$/,'($1) $2');
+  });
+}
+
 const emailInput = '<label>E-mail<input name="email" type="email" autocomplete="email" required maxlength="254"></label>';
 const passwordInput = mode => '<label>Senha<input name="password" type="password" autocomplete="' + mode +
   '" required minlength="8" maxlength="128"></label>';
@@ -70,29 +86,25 @@ function customerAuth(mode = 'signup') {
   const complete = mode === 'complete';
   const title = complete ? 'Complete seu cadastro' : signup ? 'Crie sua conta' : 'Entre na sua conta';
   const intro = complete ? 'Informe seu nome e celular para começar a pedir.' :
-    signup ? 'Preencha seus dados para escolher seus pratos e fazer o primeiro pedido.' : 'Use seu e-mail e senha para acessar a vitrine.';
+    signup ? 'Cadastre-se para fazer seu primeiro pedido.' : 'Use seu CPF e sua senha.';
   main.innerHTML = '<div class="wrap customer-auth"><div class="auth-visual"><span class="overline">FLY DELIVERY</span>' +
     '<h2>Seu próximo pedido está a um toque.</h2></div><section class="panel auth-panel"><span class="overline accent">BEM-VINDO AO FLY DELIVERY</span>' +
     '<h1>' + title + '</h1><p class="muted">' + intro + '</p><form class="form-stack" id="customer-auth-form">' +
-    (signup || complete ? profileInputs : '') + (complete ? '' : emailInput + passwordInput(signup ? 'new-password' : 'current-password')) +
-    (signup ? '<label>Confirme a senha<input name="confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>' : '') +
+    (complete ? nameInput + phoneInput : (signup ? nameInput : '') + cpfInput +
+      (signup ? phoneInput : '') + passwordInput(signup ? 'new-password' : 'current-password')) +
     formError + '<button class="btn primary wide" type="submit">' + (complete ? 'Salvar e continuar' : signup ? 'Criar conta' : 'Entrar') + '</button></form>' +
     (complete ? '' : '<button class="text-button auth-switch" data-auth-switch>' + (signup ? 'Já tenho uma conta' : 'Criar uma conta') + '</button>') +
     '</section></div>';
   const switchMode = $('[data-auth-switch]');
   if (switchMode) switchMode.onclick = () => customerAuth(signup ? 'login' : 'signup');
-  bindSubmit($('#customer-auth-form'),async fields => {
+  const form = $('#customer-auth-form');
+  formatCustomerFields(form);
+  bindSubmit(form,async fields => {
     const input = Object.fromEntries(fields);
     if (complete) {
       profile = await command('customer_profile',input);
     } else {
-      if (signup && input.confirmation !== input.password) throw new Error('As senhas precisam ser iguais.');
-      const result = await api(signup ? 'signup' : 'login',input);
-      if (!result.signedIn) {
-        customerAuth('login');
-        $('[data-form-error]').textContent = 'Confira seu e-mail para confirmar o cadastro. Depois, entre com a sua senha.';
-        return;
-      }
+      await api(signup ? 'signup' : 'login',input);
       await loadSession();
     }
     renderApp();
@@ -119,7 +131,7 @@ function renderApp() {
 }
 
 function account() {
-  const el = modal('Minha conta','<p class="dialog-copy">' + esc(current.email) + '</p>' +
+  const el = modal('Minha conta','<p class="dialog-copy">' + esc(page === 'cliente' && profile ? profile.name : current.email) + '</p>' +
     '<button class="btn outline" data-logout>Sair</button>');
   $('[data-logout]',el).onclick = async () => {
     try {
