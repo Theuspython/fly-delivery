@@ -128,8 +128,9 @@ async function streamOrders(req,res) {
   const url = new URL('/realtime/v1',supabase);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   const client = new RealtimeClient(url.toString(),{
-    params:{ apikey:publishableKey }, accessToken:async () => token, transport:WebSocket
+    params:{ apikey:publishableKey }, transport:WebSocket
   });
+  await client.setAuth(token);
   const notify = () => { if (!res.writableEnded && !res.destroyed) res.write('event: orders\ndata: {}\n\n'); };
   const channel = client.channel('fd-customer-orders').on('postgres_changes',{
     event:'*',schema:'public',table:'fd_order_updates',filter:'customer_id=eq.' + identity.id
