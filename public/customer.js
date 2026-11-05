@@ -1,0 +1,284 @@
+import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit, geo, mapPicker,
+  categories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments } from './shared.js';
+
+function stored(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+  catch { return fallback; }
+}
+const normalize = value => value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
+const validPoint = point => point && Number.isFinite(point.lat) && Number.isFinite(point.lng);
+
+export function customer(context) {
+  let stores = [];
+  let loaded = false;
+  let error;
+  let loading;
+  let category = 'Todas';
+  let search = '';
+  let cart = stored('fd-cart', { store:null, items:{} });
+  let address = stored('fd-address', null);
+  let payment = 'pix_delivery';
+  let requestId = stored('fd-request', null);
+  let ordersTimer;
+  let previousView;
+  const route = () => location.hash.slice(1) || 'inicio';
+
+  function updateHeader() {
+    $('#cart-count').textContent = Object.values(cart.items).reduce((sum, amount) => sum + amount, 0);
+    $('#top-address').textContent = address?.text || 'Informe seu endereço';
+  }
+
+  async function loadCatalog() {
+    if (loading) return loading;
+    loading = api('catalog').then(list => {
+      stores = list;
+      error = null;
+      loaded = true;
+    }).catch(err => { error = err.message; }).finally(() => { loading = null; });
+    return loading;
+  }
+
+  function saveCart() {
+    requestId = null;
+    localStorage.removeItem('fd-request');
+    localStorage.setItem('fd-cart', JSON.stringify(cart));
+    updateHeader();
+  }
+
+  function setItem(store, product, increment) {
+    if (cart.store && cart.store !== store.id) {
+      if (!window.confirm('Você tem itens de outra loja. Deseja começar um novo carrinho?')) return;
+      cart = { store:store.id, items:{} };
+    }
+    const quantity = (cart.items[product.id] ?? 0) + increment;
+    if (quantity > 25) return toast('Você pode adicionar até 25 unidades por item.');
+    if (quantity > 0) {
+      if (!cart.items[product.id] && Object.keys(cart.items).length >= 30) return toast('Seu carrinho já tem 30 tipos de item.');
+      cart.store = store.id;
+      cart.items[product.id] = quantity;
+    } else delete cart.items[product.id];
+    if (!Object.keys(cart.items).length) cart.store = null;
+    saveCart();
+    render();
+    if (increment > 0 && route().startsWith('loja/')) toast(product.name + ' no carrinho.');
+  }
+
+  function storeCard(store, index) {
+    return '<a class="restaurant-card" href="#loja/' + esc(store.id) + '"><div class="restaurant-photo"><img src="' +
+      esc(imageFor(store, store.products.find(product => product.image))) + '" alt="" loading="' + (index === 0 ? 'eager' : 'lazy') +
+      '"><span class="photo-tag">' + esc(store.category) + '</span>' + (!store.is_open ? '<span class="closed-tag">Fechado</span>' : '') +
+      '</div><div class="restaurant-content"><div><h3>' + esc(store.name) + '</h3><span class="restaurant-arrow">' + icon('arrow') +
+      '</span></div><p>' + esc(store.description) + '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta +
+      ' min</span><span>' + icon('bike') + ' ' + (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></a>';
+  }
+
+  function catalogGrid() {
+    const results = $('#results');
+    const count = $('#results-count');
+    if (!results) return;
+    const matches = stores.filter(store => (category === 'Todas' || store.category === category) &&
+      normalize([store.name,store.category,...store.products.map(p => p.name)].join(' ')).includes(normalize(search.trim())));
+    count.textContent = loaded ? matches.length + (matches.length === 1 ? ' estabelecimento' : ' estabelecimentos') : '';
+    if (error) {
+      results.innerHTML = empty('Catálogo indisponível', error, 'store') + '<button class="btn outline" id="retry">Tentar novamente</button>';
+      $('#retry').onclick = async () => { await loadCatalog(); render(); };
+    } else if (!loaded) results.innerHTML = '<p class="muted">Carregando restaurantes…</p>';
+    else if (!matches.length) results.innerHTML = empty('Nenhum resultado', 'Experimente outro termo ou categoria.', 'search');
+    else results.innerHTML = '<div class="restaurants">' + matches.map(storeCard).join('') + '</div>';
+  }
+
+  function home(view) {
+    main.innerHTML = '<div class="wrap home"><section class="hero" aria-labelledby="hero-title"><div class="hero-photo"></div>' +
+      '<div class="hero-copy"><span class="hero-kicker"><span></span> DELIVERY DO SEU BAIRRO</span>' +
+      '<h1 id="hero-title">A fome chama.<br><em>A gente leva.</em></h1><p>Descubra os melhores sabores da sua região e receba seus favoritos onde estiver.</p>' +
+      '<a class="btn hero-cta" href="#lojas">Explorar restaurantes ' + icon('arrow') + '</a></div>' +
+      '<div class="hero-stamp" aria-hidden="true">' + icon('bike') + '<span>DEU FOME?<br><strong>VAI DE FLY.</strong></span></div></section>' +
+      '<section class="browse" aria-labelledby="categories-title"><div class="section-head"><div><span class="overline accent">BATEU AQUELA VONTADE?</span>' +
+      '<h2 id="categories-title">O que vamos comer?</h2></div><label class="search-field">' + icon('search') +
+      '<input id="search" type="search" value="' + esc(search) + '" placeholder="Busque loja ou prato" aria-label="Busque loja ou prato"></label></div>' +
+      '<div id="categories" class="chips" aria-label="Filtrar categoria">' + categories.map(([label, symbol]) =>
+        '<button class="chip" data-category="' + esc(label) + '" aria-pressed="' + (label === category) + '">' + icon(symbol) + ' ' +
+        esc(label) + '</button>').join('') + '</div></section>' +
+      '<section id="restaurants" class="catalog" aria-labelledby="catalog-title"><div class="section-head"><div><span class="overline accent">VITRINE FLY</span>' +
+      '<h2 id="catalog-title">Restaurantes</h2></div><span class="muted" id="results-count"></span></div>' +
+      (stores[0]?.sample ? '<p class="pilot-label">' + icon('spark') + ' Vitrine de demonstração</p>' : '') +
+      '<div id="results"></div></section></div>';
+    $('#search').oninput = event => { search = event.target.value; catalogGrid(); };
+    $('#categories').onclick = event => {
+      const button = event.target.closest('[data-category]');
+      if (!button) return;
+      category = button.dataset.category;
+      for (const chip of $('#categories').children) chip.setAttribute('aria-pressed', chip === button);
+      catalogGrid();
+    };
+    catalogGrid();
+    if (view === 'lojas' && previousView !== view) requestAnimationFrame(() => $('.browse')?.scrollIntoView({ behavior:'smooth' }));
+  }
+
+  function storeView(store) {
+    main.innerHTML = '<div class="wrap page"><a class="back-link" href="#lojas">' + icon('back') + ' Restaurantes</a>' +
+      '<section class="store-banner"><img src="' + esc(imageFor(store, store.products.find(product => product.image))) +
+      '" alt=""><div><span class="photo-tag">' + esc(store.category) + '</span><h1>' + esc(store.name) + '</h1><p>' + esc(store.description) +
+      '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta + ' min</span><span>' + icon('bike') + ' ' +
+      (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></section>' +
+      (store.sample ? '<p class="pilot-label">' + icon('spark') + ' Cardápio de demonstração</p>' : '') +
+      (!store.is_open ? '<p class="pilot-label">Esta loja está fechada.</p>' : '') +
+      '<div class="section-head menu-head"><h2>Cardápio</h2><a class="btn outline" href="#carrinho">' + icon('bag') + ' Ver carrinho</a></div>' +
+      '<div class="products">' + (store.products.length ? store.products.map(product =>
+        '<article class="product"><div><h3>' + esc(product.name) + '</h3><p>' + esc(product.description) + '</p><strong>' +
+        money(product.price) + '</strong></div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
+        '<button class="icon-button add-product" data-product="' + esc(product.id) + '" aria-label="Adicionar ' + esc(product.name) +
+        '" ' + (store.is_open ? '' : 'disabled') + '>' + icon('plus') + '</button></article>').join('') :
+        empty('Cardápio em breve','A loja está preparando os primeiros produtos.','store')) + '</div></div>';
+    $('.products').onclick = event => {
+      const button = event.target.closest('[data-product]');
+      if (button) setItem(store,store.products.find(product => product.id === button.dataset.product),1);
+    };
+  }
+
+  function addressDialog() {
+    let selected = validPoint(address) ? address : null;
+    let picker;
+    const closePicker = () => picker?.remove();
+    const el = modal('Onde vamos entregar?',
+      '<form class="form-stack" id="address-form"><label>Endereço, número e complemento<input name="address" maxlength="240" minlength="5" required value="' +
+      esc(address?.text) + '" placeholder="Ex. Rua das Flores, 110, ap. 12"></label>' +
+      '<p class="map-help">Toque no mapa e arraste o pino para ajustar.</p><div class="map" id="address-map" aria-label="Mapa de entrega"></div>' +
+      '<div class="map-actions"><button class="btn outline" type="button" data-gps>' + icon('location') + ' Usar GPS</button><span id="point-label" class="muted">Selecione o ponto de entrega</span></div>' +
+      '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">Confirmar endereço</button></form>');
+    picker = mapPicker($('#address-map',el),selected,stores.find(store => store.id === cart.store),point => {
+      selected = point;
+      $('#point-label',el).textContent = 'Ponto selecionado';
+    });
+    el.addEventListener('close',closePicker,{ once:true });
+    $('[data-gps]',el).onclick = async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        const point = await geo();
+        if (button.isConnected) picker.set(point);
+      } catch (err) { if (button.isConnected) $('[data-form-error]',el).textContent = err.message; }
+      finally { button.disabled = false; }
+    };
+    bindSubmit($('#address-form',el), async fields => {
+      if (!selected) throw new Error('Marque o ponto no mapa antes de confirmar.');
+      address = { text:String(fields.get('address')).trim(), lat:selected.lat, lng:selected.lng };
+      localStorage.setItem('fd-address',JSON.stringify(address));
+      requestId = null;
+      localStorage.removeItem('fd-request');
+      el.close();
+      updateHeader();
+      if (route() === 'carrinho') render();
+    });
+  }
+
+  function cartView() {
+    const store = stores.find(candidate => candidate.id === cart.store);
+    const products = store?.products.filter(product => cart.items[product.id]) ?? [];
+    const subtotal = products.reduce((sum,p) => sum + p.price * cart.items[p.id],0);
+    const missing = Object.keys(cart.items).length > products.length;
+    main.innerHTML = '<div class="wrap page"><a class="back-link" href="' + (store ? '#loja/' + esc(store.id) : '#lojas') + '">' +
+      icon('back') + ' Continuar explorando</a><span class="overline accent">SEU PEDIDO</span><h1>Meu carrinho</h1>' +
+      (!products.length ? '<div class="panel">' + empty('Seu carrinho está vazio', missing ? 'Os itens anteriores não estão mais disponíveis.' : 'Encontre algo gostoso no cardápio.') +
+        (missing ? '<button class="btn outline" data-clear>Limpar carrinho</button>' : '') + '</div>' :
+        '<div class="split"><section class="panel"><h2>' + esc(store.name) + '</h2><div class="cart-items">' + products.map(product =>
+          '<div class="cart-row"><div><strong>' + esc(product.name) + '</strong><p>' + money(product.price) + ' por unidade</p></div>' +
+          '<div class="stepper"><button class="icon-button" data-id="' + esc(product.id) + '" data-delta="-1" aria-label="Diminuir ' +
+          esc(product.name) + '">' + icon('minus') + '</button><b>' + cart.items[product.id] + '</b><button class="icon-button" data-id="' +
+          esc(product.id) + '" data-delta="1" aria-label="Aumentar ' + esc(product.name) + '">' + icon('plus') + '</button></div></div>').join('') +
+          '</div>' + (missing ? '<p class="pilot-label">Itens indisponíveis serão removidos deste pedido.</p>' : '') + '</section>' +
+          '<section class="panel"><h2>Entrega e pagamento</h2><button class="address-summary" data-address>' + icon('pin') + '<span>' +
+          esc(address?.text || 'Marcar endereço no mapa') + '</span>' + icon('arrow') + '</button><form class="form-stack" id="checkout">' +
+          '<label>Forma de pagamento<select name="payment">' + Object.entries(payments).map(([key,value]) =>
+            '<option value="' + key + '"' + (key === payment ? ' selected' : '') + '>' + value + '</option>').join('') + '</select></label>' +
+          '<p class="muted">O pagamento é combinado com a loja e realizado na entrega.</p>' +
+          '<div class="total-line"><span>Produtos</span><strong>' + money(subtotal) + '</strong></div>' +
+          '<div class="total-line"><span>Entrega</span><strong>' + money(store.fee) + '</strong></div>' +
+          '<div class="total-line total"><span>Total</span><strong>' + money(subtotal + store.fee) + '</strong></div>' +
+          '<p class="form-error" data-form-error role="alert"></p>' +
+          (store.sample ? '<p class="pilot-label">Este cardápio é demonstrativo. Você pode explorar o checkout.</p>' : '') +
+          '<button class="btn primary wide" type="submit"' + (!store.is_open || store.sample ? ' disabled' : '') + '>' +
+          (store.sample ? 'Pedido indisponível na demonstração' : store.is_open ? 'Confirmar pedido' : 'Loja fechada') + '</button></form></section></div>') + '</div>';
+    if ($('[data-clear]')) $('[data-clear]').onclick = () => { cart = { store:null,items:{} }; saveCart(); render(); };
+    if (!products.length) return;
+    $('.cart-items').onclick = event => {
+      const button = event.target.closest('[data-delta]');
+      if (button) setItem(store,products.find(product => product.id === button.dataset.id),Number(button.dataset.delta));
+    };
+    $('[data-address]').onclick = addressDialog;
+    $('select[name=payment]').onchange = event => {
+      payment = event.target.value;
+    };
+    bindSubmit($('#checkout'), async fields => {
+      if (!address) return addressDialog();
+      if (!context.user) return context.signIn();
+      requestId ??= crypto.randomUUID();
+      localStorage.setItem('fd-request',JSON.stringify(requestId));
+      try {
+        await command('place', { store_id:store.id, request_id:requestId, address:address.text, lat:address.lat, lng:address.lng,
+          payment:fields.get('payment'), fee:store.fee, items:products.map(product => ({
+            id:product.id, quantity:cart.items[product.id], price:product.price
+          })) });
+      } catch (err) {
+        if (err.message.includes('mudaram') || err.message.includes('cardápio')) {
+          await loadCatalog();
+          render();
+          toast(err.message);
+          return;
+        }
+        throw err;
+      }
+      cart = { store:null,items:{} };
+      saveCart();
+      location.hash = 'pedidos';
+      toast('Pedido enviado à loja.');
+    });
+  }
+
+  function orderView() {
+    main.innerHTML = '<div class="wrap page"><span class="overline accent">ACOMPANHAMENTO</span><h1>Meus pedidos</h1><div id="order-list">' +
+      (context.user ? '<p class="muted">Carregando pedidos…</p>' :
+        '<div class="panel">' + empty('Acompanhe seus pedidos','Entre para ver os pedidos em andamento e o histórico.') +
+        '<button class="btn primary" data-signin>Entrar</button></div>') + '</div></div>';
+    if (!context.user) return;
+    const list = $('#order-list');
+    async function refreshOrders() {
+      try {
+        const orders = await command('orders');
+        if (!list.isConnected) return;
+        const markup = orders.length ? '<div class="order-grid">' + orders.map(order => orderCard(order,
+          order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true })).join('') +
+          '</div>' : '<div class="panel">' + empty('Nenhum pedido ainda','Explore os cardápios para começar.') + '</div>';
+        if (list.innerHTML !== markup && !list.contains(document.activeElement)) list.innerHTML = markup;
+      } catch (err) {
+        if (list.isConnected && !list.querySelector('.order-grid')) list.innerHTML = empty('Pedidos indisponíveis',err.message);
+      }
+    }
+    bindTransitions(list,async () => { document.activeElement?.blur(); await refreshOrders(); });
+    refreshOrders();
+    ordersTimer = setInterval(refreshOrders,8000);
+  }
+
+  function render() {
+    clearInterval(ordersTimer);
+    const view = route();
+    if (view === 'pedidos') orderView();
+    else if (view === 'carrinho' && loaded) cartView();
+    else if (view.startsWith('loja/') && loaded) {
+      const store = stores.find(candidate => candidate.id === view.slice(5));
+      if (store) storeView(store);
+      else main.innerHTML = '<div class="wrap page"><a class="back-link" href="#lojas">' + icon('back') +
+        ' Restaurantes</a>' + empty('Loja indisponível','Confira as outras lojas da região.','store') + '</div>';
+    } else home(view);
+    if (previousView !== view && view !== 'lojas') window.scrollTo(0,0);
+    previousView = view;
+    updateHeader();
+  }
+
+  loadCatalog().then(() => render());
+  window.addEventListener('focus', async () => {
+    if (['inicio','lojas'].includes(route())) { await loadCatalog(); render(); }
+  });
+  return { render, addressDialog, updateHeader };
+}
