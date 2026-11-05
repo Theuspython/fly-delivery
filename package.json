@@ -9,8 +9,5 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test"
-  },
-  "dependencies": {
-    "leaflet": "1.9.4"
   }
 }

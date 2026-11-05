@@ -1,4 +1,5 @@
-import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit, geo, mapPicker,
+import { mapPicker } from './google-map.js';
+import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit, geo,
   categories, empty, orderCard, transitionButton, bindTransitions } from './shared.js';
 
 const profiles = {
@@ -10,7 +11,30 @@ const mapsLink = (lat, lng, label) => '<a class="btn outline" href="https://www.
   encodeURIComponent(lat + ',' + lng) + '" target="_blank" rel="noopener noreferrer">' + icon('pin') + ' ' + esc(label) + '</a>';
 const formEnd = label => '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">' + esc(label) + '</button>';
 
+function showRegistration(result, page, message) {
+  if (!result.activationToken) {
+    toast(result.activationPending ? 'Cadastro salvo. Edite o cadastro para tentar gerar o link novamente.' : message);
+    return;
+  }
+  const url = location.origin + '/' + page + '/#ativar=' + encodeURIComponent(result.activationToken);
+  const el = modal('Link de ativação',
+    '<div class="form-stack"><label>Link individual<input id="activation-link" readonly value="' + esc(url) +
+    '"></label><button class="btn primary" data-copy-link>Copiar link</button></div>',
+    message + ' Compartilhe este link em particular com o titular da conta para que ele defina a senha.');
+  $('[data-copy-link]',el).onclick = async () => {
+    const field = $('#activation-link',el);
+    field.select();
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('Link copiado.');
+    } catch {
+      toast('Selecione e copie o link exibido.');
+    }
+  };
+}
+
 function storeForm(store, done) {
+  const requestId = crypto.randomUUID();
   let selected = store ? { lat:store.lat, lng:store.lng } : null;
   let map;
   const el = modal(store ? 'Editar estabelecimento' : 'Cadastrar estabelecimento',
@@ -18,14 +42,19 @@ function storeForm(store, done) {
     esc(store?.name) + '"></label><label>Categoria<select name="category">' + categories.slice(1).map(([name]) =>
       '<option' + (name === store?.category ? ' selected' : '') + '>' + esc(name) + '</option>').join('') + '</select></label></div>' +
     '<label>E-mail do responsável<input name="owner_email" type="email" required maxlength="254" value="' + esc(store?.owner_email) +
-    '" placeholder="Conta cadastrada e confirmada"></label><label>Descrição<textarea name="description" rows="2" maxlength="260">' +
+    '" placeholder="E-mail usado para acessar a loja"></label><label>Descrição<textarea name="description" rows="2" maxlength="260">' +
     esc(store?.description) + '</textarea></label><label>Endereço de retirada<input name="address" required minlength="5" maxlength="240" value="' +
     esc(store?.address) + '"></label><div class="fields-three"><label>Taxa (R$)<input name="fee" type="number" step="0.01" min="0" max="1000" required value="' +
     (store ? store.fee / 100 : '5.90') + '"></label><label>Raio (km)<input name="delivery_radius" type="number" min="1" max="50" required value="' +
     (store?.delivery_radius ?? 8) + '"></label><label>Prazo (min)<input name="eta" type="number" min="5" max="180" required value="' +
     (store?.eta ?? 30) + '"></label></div><p class="map-help">Marque o ponto de retirada no mapa.</p><div class="map" id="store-map"></div>' +
     '<div class="map-actions"><button class="btn outline" type="button" data-gps>' + icon('location') +
-    ' Usar GPS</button><span class="muted" id="store-point">Aguardando localização</span></div><label class="check"><input name="active" type="checkbox"' +
+    ' Usar GPS</button><span class="muted" id="store-point">Aguardando localização</span></div>' +
+    '<details class="map-coordinates"><summary>Informar coordenadas</summary><div class="fields-two">' +
+    '<label>Latitude<input id="store-lat" inputmode="decimal" placeholder="-19.9235"></label>' +
+    '<label>Longitude<input id="store-lng" inputmode="decimal" placeholder="-43.9381"></label></div>' +
+    '<button class="btn outline" type="button" data-set-coordinates>Usar coordenadas</button></details>' +
+    '<label class="check"><input name="active" type="checkbox"' +
     (store?.active ? ' checked' : '') + '> Publicar no catálogo</label>' + formEnd('Salvar estabelecimento') + '</form>');
   map = mapPicker($('#store-map',el),selected,undefined,point => {
     selected = point;
@@ -39,13 +68,28 @@ function storeForm(store, done) {
     catch (error) { if (button.isConnected) $('[data-form-error]',el).textContent = error.message; }
     finally { button.disabled = false; }
   };
+  $('[data-set-coordinates]',el).onclick = () => {
+    const value = id => $(id,el).value.trim().replace(',','.');
+    const lat = value('#store-lat');
+    const lng = value('#store-lng');
+    const formError = $('[data-form-error]',el);
+    if (!lat || !lng || !(Number(lat) >= -90 && Number(lat) <= 90 && Number(lng) >= -180 && Number(lng) <= 180)) {
+      formError.textContent = 'Informe latitude e longitude válidas.';
+      return;
+    }
+    formError.textContent = '';
+    map.set({ lat:Number(lat),lng:Number(lng) });
+  };
   bindSubmit($('#store-form',el), async data => {
-    if (!selected) throw new Error('Marque o endereço de retirada no mapa.');
+    if (!selected) throw new Error('Selecione o ponto de retirada no mapa, use o GPS ou informe as coordenadas.');
     const fields = Object.fromEntries(data);
-    await command('save_store', { ...fields, id:store?.id, fee:Math.round(Number(fields.fee)*100),
-      active:data.has('active'), lat:selected.lat, lng:selected.lng });
+    const result = await api('provision', {
+      ...fields, kind:'store', id:store?.id, request_id:requestId, fee:Math.round(Number(fields.fee)*100),
+      delivery_radius:Number(fields.delivery_radius), eta:Number(fields.eta),
+      active:data.has('active'), lat:selected.lat, lng:selected.lng
+    });
     el.close();
-    toast('Estabelecimento salvo.');
+    showRegistration(result,'loja','Estabelecimento salvo.');
     await done();
   });
 }
@@ -78,14 +122,14 @@ function productForm(store, product, done) {
   });
 }
 
-function courierForm(done) {
-  const el = modal('Habilitar entregador',
-    '<form class="form-stack" id="courier-form"><label>E-mail do entregador<input name="email" type="email" required maxlength="254" placeholder="Conta cadastrada e confirmada"></label>' +
-    formEnd('Habilitar entregador') + '</form>');
+function courierForm(done, email = '') {
+  const el = modal('Cadastrar entregador',
+    '<form class="form-stack" id="courier-form"><label>E-mail do entregador<input name="email" type="email" required maxlength="254" value="' +
+    esc(email) + '" placeholder="E-mail usado para acessar o app"></label>' + formEnd('Salvar entregador') + '</form>');
   bindSubmit($('#courier-form',el), async data => {
-    await command('set_courier',{ email:data.get('email'), enabled:true });
+    const result = await api('provision',{ kind:'courier',email:data.get('email') });
     el.close();
-    toast('Entregador habilitado.');
+    showRegistration(result,'entregador','Entregador cadastrado.');
     await done();
   });
 }
@@ -132,7 +176,7 @@ export function operations(page, context) {
   let watch;
   let refreshing = false;
   let availabilityChange = false;
-  const allowed = user => user && (user.role === config.role || (page === 'loja' && user.role === 'admin'));
+  const allowed = user => user?.role === config.role;
 
   function stopWatch() {
     if (watch !== undefined) navigator.geolocation.clearWatch(watch);
@@ -202,10 +246,11 @@ export function operations(page, context) {
       }
       if (page === 'admin') {
         updateRegion('ops-couriers','<div class="section-head"><h2>Entregadores</h2><button class="btn primary" data-add-courier>' +
-          icon('plus') + ' Habilitar</button></div><div class="panel">' + (couriers.length ? couriers.map(courier =>
+          icon('plus') + ' Novo entregador</button></div><div class="panel">' + (couriers.length ? couriers.map(courier =>
             '<div class="cart-row"><div><strong>' + esc(courier.email) + '</strong><p>' + (courier.online ? 'Disponível' : 'Indisponível') +
-            '</p></div><button class="btn outline" data-disable="' + esc(courier.email) + '">Desabilitar</button></div>').join('') :
-            empty('Nenhum entregador habilitado','Associe uma conta de entregador já confirmada.','bike')) + '</div>',force);
+            '</p></div><div class="order-actions"><button class="btn outline" data-edit-courier="' + esc(courier.email) +
+            '">Acesso</button><button class="btn outline" data-disable="' + esc(courier.email) + '">Desabilitar</button></div></div>').join('') :
+            empty('Nenhum entregador habilitado','Cadastre um entregador para liberar o acesso às ofertas.','bike')) + '</div>',force);
       }
       $('#ops-error').textContent = '';
     } catch (error) {
@@ -255,7 +300,7 @@ export function operations(page, context) {
     if (!allowed(user)) {
       body.innerHTML = '<div class="panel">' + empty(user ? 'Acesso restrito' : 'Entre para continuar',
         user ? 'Seu perfil não tem acesso a esta área.' : 'Use sua conta Fly Delivery para acessar este painel.',config.symbol) +
-        (user ? '<a class="btn outline" href="/cliente/">Voltar à vitrine</a>' : '<button class="btn primary" data-signin>Entrar</button>') + '</div>';
+        (user ? '<button class="btn outline" data-switch-account>Trocar de conta</button>' : '<button class="btn primary" data-signin>Entrar</button>') + '</div>';
       return;
     }
     body.innerHTML = '<p class="form-error" id="ops-error" role="alert"></p>' +
@@ -278,13 +323,13 @@ export function operations(page, context) {
     body.addEventListener('click',async event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
-      const { addStore,editStore,addProduct,editProduct,store,open,addCourier,disable } = button.dataset;
+      const { addStore,editStore,addProduct,editProduct,store,open,addCourier,editCourier,disable } = button.dataset;
       const byId = id => storeList.find(candidate => candidate.id === id);
       if (addStore !== undefined) storeForm(null,done);
       if (editStore) storeForm(byId(editStore),done);
       if (addProduct) productForm(byId(addProduct),null,done);
       if (editProduct) productForm(byId(store),byId(store).products.find(product => product.id === editProduct),done);
-      if (addCourier !== undefined) courierForm(done);
+      if (addCourier !== undefined || editCourier) courierForm(done,editCourier);
       if (!open && !disable) return;
       if (disable && !window.confirm('Desabilitar este entregador?')) return;
       button.disabled = true;

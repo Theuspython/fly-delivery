@@ -1,4 +1,5 @@
-import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit, geo, mapPicker,
+import { mapPicker } from './google-map.js';
+import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit, geo,
   categories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments } from './shared.js';
 
 function stored(key, fallback) {
@@ -84,7 +85,7 @@ export function customer(context) {
       results.innerHTML = empty('Catálogo indisponível', error, 'store') + '<button class="btn outline" id="retry">Tentar novamente</button>';
       $('#retry').onclick = async () => { await loadCatalog(); render(); };
     } else if (!loaded) results.innerHTML = '<p class="muted">Carregando restaurantes…</p>';
-    else if (!matches.length) results.innerHTML = empty('Nenhum resultado', 'Experimente outro termo ou categoria.', 'search');
+    else if (!matches.length) results.innerHTML = stores.length ? empty('Nenhum resultado','Experimente outro termo ou categoria.','search') : empty('Estabelecimentos em breve','As lojas cadastradas aparecerão aqui assim que forem publicadas.','store');
     else results.innerHTML = '<div class="restaurants">' + matches.map(storeCard).join('') + '</div>';
   }
 
@@ -102,7 +103,6 @@ export function customer(context) {
         esc(label) + '</button>').join('') + '</div></section>' +
       '<section id="restaurants" class="catalog" aria-labelledby="catalog-title"><div class="section-head"><div><span class="overline accent">VITRINE FLY</span>' +
       '<h2 id="catalog-title">Restaurantes</h2></div><span class="muted" id="results-count"></span></div>' +
-      (stores[0]?.sample ? '<p class="pilot-label">' + icon('spark') + ' Vitrine de demonstração</p>' : '') +
       '<div id="results"></div></section></div>';
     $('#search').oninput = event => { search = event.target.value; catalogGrid(); };
     $('#categories').onclick = event => {
@@ -122,7 +122,6 @@ export function customer(context) {
       '" alt=""><div><span class="photo-tag">' + esc(store.category) + '</span><h1>' + esc(store.name) + '</h1><p>' + esc(store.description) +
       '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta + ' min</span><span>' + icon('bike') + ' ' +
       (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></section>' +
-      (store.sample ? '<p class="pilot-label">' + icon('spark') + ' Cardápio de demonstração</p>' : '') +
       (!store.is_open ? '<p class="pilot-label">Esta loja está fechada.</p>' : '') +
       '<div class="section-head menu-head"><h2>Cardápio</h2><a class="btn outline" href="#carrinho">' + icon('bag') + ' Ver carrinho</a></div>' +
       '<div class="products">' + (store.products.length ? store.products.map(product =>
@@ -197,9 +196,8 @@ export function customer(context) {
           '<div class="total-line"><span>Entrega</span><strong>' + money(store.fee) + '</strong></div>' +
           '<div class="total-line total"><span>Total</span><strong>' + money(subtotal + store.fee) + '</strong></div>' +
           '<p class="form-error" data-form-error role="alert"></p>' +
-          (store.sample ? '<p class="pilot-label">Este cardápio é demonstrativo. Você pode explorar o checkout.</p>' : '') +
-          '<button class="btn primary wide" type="submit"' + (!store.is_open || store.sample ? ' disabled' : '') + '>' +
-          (store.sample ? 'Pedido indisponível na demonstração' : store.is_open ? 'Confirmar pedido' : 'Loja fechada') + '</button></form></section></div>') + '</div>';
+          '<button class="btn primary wide" type="submit"' + (!store.is_open ? ' disabled' : '') + '>' +
+          (store.is_open ? 'Confirmar pedido' : 'Loja fechada') + '</button></form></section></div>') + '</div>';
     if ($('[data-clear]')) $('[data-clear]').onclick = () => { cart = { store:null,items:{} }; saveCart(); render(); };
     if (!products.length) return;
     $('.cart-items').onclick = event => {

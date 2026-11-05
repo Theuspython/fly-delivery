@@ -23,12 +23,13 @@ test('health and distinct PWA entry points', async () => {
     const manifest = await (await fetch(origin + '/' + role + '.webmanifest')).json();
     assert.equal(manifest.start_url,'/' + role + '/');
     assert.equal(manifest.id,manifest.start_url);
+    assert.equal(manifest.scope,manifest.start_url);
     assert.equal(manifest.display,'standalone');
   }
 });
 
-test('Leaflet, worker and static data are served from the same origin', async () => {
-  for (const path of ['/vendor/leaflet/leaflet.js','/vendor/leaflet/leaflet.css','/assets/icon-192.png','/sw.js']) {
+test('Google Maps loader, pin and worker are served from the same origin', async () => {
+  for (const path of ['/google-map.js','/assets/map-pin.svg','/assets/icon-192.png','/sw.js']) {
     const response = await fetch(origin + path);
     assert.equal(response.status,200,path);
     assert.ok((await response.arrayBuffer()).byteLength > 100,path);
@@ -44,5 +45,14 @@ test('unauthenticated and cross-origin mutations are rejected', async () => {
     assert.equal(response.status,status);
     assert.equal(response.headers.get('cache-control'),'no-store');
   }
+  const headers = { Origin:origin,'Content-Type':'application/json','X-FD-App':'loja' };
+  const signup = await fetch(origin + '/api/signup',{
+    method:'POST',headers,body:JSON.stringify({ email:'fixture@example.invalid',password:'example-password' })
+  });
+  assert.equal(signup.status,403);
+  const provision = await fetch(origin + '/api/provision',{ method:'POST',headers,body:'{}' });
+  assert.equal(provision.status,401);
   assert.equal((await fetch(origin + '/package.json')).status,404);
+  const redirect = await fetch(origin + '/', { redirect:'manual' });
+  assert.equal(redirect.headers.get('location'),'/cliente/');
 });

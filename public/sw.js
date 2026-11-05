@@ -1,5 +1,5 @@
-const cacheName = 'fly-delivery-shell-v1';
-const shell = ['/styles.css', '/app.js', '/shared.js', '/customer.js', '/operations.js', '/assets/icon.svg'];
+const cacheName = 'fly-delivery-shell-v2';
+const shell = ['/styles.css', '/app.js', '/shared.js', '/google-map.js', '/customer.js', '/operations.js', '/assets/icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)));
 });
@@ -11,7 +11,7 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).catch(() => new Response(
-      '<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fly Delivery</title><link rel="stylesheet" href="/styles.css"><main class="wrap"><h1>Você está offline</h1><p>Reconecte-se para acessar o Fly Delivery.</p><a href="/cliente/">Tentar novamente</a></main></html>',
+      '<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fly Delivery</title><link rel="stylesheet" href="/styles.css"><main class="wrap"><h1>Você está offline</h1><p>Reconecte-se para acessar o Fly Delivery.</p><a href="">Tentar novamente</a></main></html>',
       { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
     )));
   } else if (shell.includes(url.pathname)) {

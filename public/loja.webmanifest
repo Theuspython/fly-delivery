@@ -4,7 +4,7 @@
   "short_name": "Fly Delivery Loja",
   "lang": "pt-BR",
   "start_url": "/loja/",
-  "scope": "/",
+  "scope": "/loja/",
   "display": "standalone",
   "background_color": "#faf8f5",
   "theme_color": "#faf8f5",

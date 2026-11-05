@@ -9,6 +9,8 @@ declare
   courier2 uuid := gen_random_uuid();
   foreign_buyer uuid := gen_random_uuid();
   store_id uuid;
+  registration_id uuid := gen_random_uuid();
+  registration jsonb;
   product_id uuid;
   request_id uuid := gen_random_uuid();
   order_id uuid;
@@ -22,9 +24,14 @@ begin
   end loop;
   insert into fly_delivery.accounts (id,role) values(admin_id,'admin');
   perform set_config('request.jwt.claim.sub',admin_id::text,true);
-  result := public.fd_api('save_store',jsonb_build_object('owner_email',merchant_id::text || '@example.invalid',
-    'name','Fixture Store','category','Pizza','active',true,'address','Rua Teste 123','lat',-19.9,'lng',-43.9,'fee',650,'delivery_radius',8,'eta',25));
+  if public.fd_registration_target(merchant_id::text || '@example.invalid')->>'confirmed' <> 'true' then
+    raise exception 'Registration lookup did not find the confirmed account';
+  end if;
+  registration := jsonb_build_object('owner_email',merchant_id::text || '@example.invalid','request_id',registration_id,
+    'name','Fixture Store','category','Pizza','active',true,'address','Rua Teste 123','lat',-19.9,'lng',-43.9,'fee',650,'delivery_radius',8,'eta',25);
+  result := public.fd_api('register_store',registration);
   store_id := (result->>'id')::uuid;
+  if public.fd_api('register_store',registration)->>'id' <> store_id::text then raise exception 'Duplicate registration retry'; end if;
   perform public.fd_api('set_courier',jsonb_build_object('email',courier1::text || '@example.invalid','enabled',true));
   perform public.fd_api('set_courier',jsonb_build_object('email',courier2::text || '@example.invalid','enabled',true));
 
@@ -52,6 +59,12 @@ begin
 
   perform set_config('request.jwt.claim.sub',foreign_buyer::text,true);
   perform public.fd_api('session');
+  begin
+    perform public.fd_registration_target(merchant_id::text || '@example.invalid');
+    raise exception 'Customer can look up Auth accounts';
+  exception when raise_exception then
+    if sqlerrm not like 'FD: Acesso restrito%' then raise; end if;
+  end;
   if public.fd_api('orders','{"view":"customer"}') <> '[]'::jsonb then raise exception 'Buyer can read another buyer order'; end if;
   begin
     perform public.fd_api('transition',jsonb_build_object('id',order_id,'status','cancelled'));
@@ -91,5 +104,5 @@ begin
   if result->>'status' <> 'delivered' or result->'items'->0->>'name' <> 'Pizza Teste' or
     jsonb_array_length(result->'events') <> 6 then raise exception 'Delivery history was not preserved'; end if;
 end $$;
-select 'Fly Delivery: checkout, acesso, aceite exclusivo e entrega verificados' as integration;
+select 'Fly Delivery: cadastro, checkout, acesso, aceite exclusivo e entrega verificados' as integration;
 rollback;

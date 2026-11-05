@@ -51,10 +51,10 @@ let refresh;
 export async function api(path, data, retry = true) {
   const upload = data instanceof File;
   const response = await fetch('/api/' + path, data === undefined ? {} : {
-    method:'POST', headers:{ 'Content-Type':upload ? data.type : 'application/json' },
+    method:'POST', headers:{ 'Content-Type':upload ? data.type : 'application/json', 'X-FD-App':location.pathname.split('/')[1] || 'cliente' },
     body:upload ? data : JSON.stringify(data)
   });
-  if (response.status === 401 && retry && (path === 'command' || path.startsWith('upload?'))) {
+  if (response.status === 401 && retry && (path === 'command' || path === 'provision' || path.startsWith('upload?'))) {
     refresh ??= api('refresh', {}, false).finally(() => { refresh = null; });
     await refresh;
     return api(path, data, false);
@@ -112,32 +112,6 @@ export const geo = () => new Promise((resolve, reject) => {
     enableHighAccuracy:true, maximumAge:15000, timeout:12000
   });
 });
-
-export const defaultCenter = { lat:-19.9235, lng:-43.9381 };
-export function mapPicker(element, selected, center = defaultCenter, onSelect = () => {}) {
-  if (!window.L) {
-    element.innerHTML = '<p class="empty">O mapa está indisponível. Recarregue a página.</p>';
-    return { set() {}, remove() {} };
-  }
-  const map = window.L.map(element, { scrollWheelZoom:false }).setView(selected ?? center, 15);
-  window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom:19, attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-  }).addTo(map);
-  let marker;
-  const markerIcon = window.L.divIcon({ html:icon('pin'), className:'map-pin', iconSize:[40,40], iconAnchor:[20,37] });
-  function set(point) {
-    if (!marker) {
-      marker = window.L.marker(point, { icon:markerIcon, draggable:true, title:'Ponto selecionado' }).addTo(map);
-      marker.on('dragend', () => onSelect(marker.getLatLng()));
-    } else marker.setLatLng(point);
-    map.panTo(point);
-    onSelect(point);
-  }
-  map.on('click', event => set(event.latlng));
-  if (selected) set(selected);
-  requestAnimationFrame(() => map.invalidateSize());
-  return { set, remove:() => map.remove() };
-}
 
 export function empty(title, copy, symbol = 'bag') {
   return '<div class="empty"><div class="empty-icon">' + icon(symbol) + '</div><h3>' + esc(title) + '</h3><p>' + esc(copy) + '</p></div>';

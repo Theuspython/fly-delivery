@@ -6,16 +6,21 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../public/', import.meta.url)).replace(/\/$/, '');
 const supabase = process.env.SUPABASE_URL?.replace(/\/$/, '');
 const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-const leaflet = fileURLToPath(new URL('../node_modules/leaflet/dist/', import.meta.url));
-const routes = new Set(['/', '/cliente/', '/loja/', '/entregador/', '/admin/']);
+const googleMapsKey = process.env.GOOGLE_MAPS_BROWSER_KEY;
+const routes = new Set(['/cliente/', '/loja/', '/entregador/', '/admin/']);
 const mime = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.webp': 'image/webp', '.json': 'application/json', '.webmanifest': 'application/manifest+json'
 };
 const titles = { loja:'Estabelecimento', entregador:'Entregador', admin:'Administração' };
-const sessionCookie = 'fd_access';
-const refreshCookie = 'fd_refresh';
+const apps = new Set(['cliente','loja','entregador','admin']);
+
+function cookiesFor(req) {
+  const app = req.headers['x-fd-app'];
+  const scope = apps.has(app) ? app : 'cliente';
+  return { sessionCookie:'fd_' + scope + '_access', refreshCookie:'fd_' + scope + '_refresh' };
+}
 const limit = 3 * 1024 * 1024;
 
 class HttpError extends Error {
@@ -50,6 +55,7 @@ function readCookies(req) {
 }
 
 function setSession(req, res, tokens) {
+  const { sessionCookie, refreshCookie } = cookiesFor(req);
   const secure = req.headers['x-forwarded-proto'] === 'https' || req.socket.encrypted;
   const attributes = 'Path=/; HttpOnly; SameSite=Lax' + (secure ? '; Secure' : '');
   res.setHeader('Set-Cookie', [
@@ -64,13 +70,16 @@ async function upstream(path, { method = 'POST', token, body, type = 'applicatio
   if (token) headers.Authorization = 'Bearer ' + token;
   const response = await fetch(supabase + path, {
     method, headers, body: type === 'application/json' && body !== undefined ? JSON.stringify(body) : body,
-    signal: AbortSignal.timeout(12000)
+    signal: AbortSignal.timeout(path.startsWith('/functions/') ? 25000 : 12000)
   });
   const data = response.status === 204 ? null : await response.json();
   if (!response.ok) {
     const message = data?.message ?? data?.msg ?? data?.error_description;
     if (data?.code === 'P0001' && message?.startsWith('FD: ')) throw new HttpError(409, message.slice(4));
     if (response.status === 401) throw new HttpError(401, 'Entre novamente para continuar.');
+    if (path.startsWith('/functions/') && data?.code === 'FD_ONBOARDING' && typeof message === 'string') {
+      throw new HttpError(response.status, message);
+    }
     if (response.status === 429) throw new HttpError(429, 'Muitas tentativas. Aguarde e tente de novo.');
     if (path.startsWith('/auth/')) {
       const messages = {
@@ -78,7 +87,8 @@ async function upstream(path, { method = 'POST', token, body, type = 'applicatio
         email_not_confirmed: 'Confirme seu e-mail antes de entrar.',
         weak_password: 'Escolha uma senha mais forte.',
         user_already_exists: 'Esse e-mail já tem conta. Entre para continuar.',
-        over_email_send_rate_limit: 'Aguarde antes de solicitar outro e-mail.'
+        over_email_send_rate_limit: 'Aguarde antes de solicitar outro e-mail.',
+        email_address_not_authorized: 'O envio de e-mails de cadastro ainda precisa ser configurado.'
       };
       throw new HttpError(400, messages[data?.error_code ?? data?.code] ?? 'Não foi possível concluir o acesso.');
     }
@@ -99,7 +109,7 @@ async function readJson(req) {
 }
 
 async function api(req, res, url) {
-  const isRead = url.pathname === '/api/catalog' && req.method === 'GET';
+  const isRead = req.method === 'GET' && ['/api/catalog','/api/maps/browser-config'].includes(url.pathname);
   if (!isRead) {
     if (req.method !== 'POST') throw new HttpError(405, 'Método indisponível.');
     const origin = req.headers.origin;
@@ -107,6 +117,11 @@ async function api(req, res, url) {
       throw new HttpError(403, 'Origem da requisição inválida.');
     }
   }
+  if (url.pathname === '/api/maps/browser-config') {
+    if (!googleMapsKey) throw new HttpError(503, 'O Google Maps ainda não está configurado. Você pode usar o GPS.');
+    return json(res, 200, { key:googleMapsKey });
+  }
+  const { sessionCookie, refreshCookie } = cookiesFor(req);
   const cookies = readCookies(req);
   const access = cookies[sessionCookie];
   if (url.pathname === '/api/catalog') {
@@ -121,6 +136,7 @@ async function api(req, res, url) {
       throw new HttpError(400, 'Informe um e-mail válido e uma senha de 8 a 128 caracteres.');
     }
     const signup = url.pathname.endsWith('/signup');
+    if (signup && sessionCookie !== 'fd_cliente_access') throw new HttpError(403, 'O cadastro público é destinado aos clientes.');
     const data = await upstream(signup ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password', {
       body: { email, password }
     });
@@ -141,6 +157,16 @@ async function api(req, res, url) {
     });
     setSession(req, res, tokens);
     return json(res, 200, {});
+  }
+  if (url.pathname === '/api/provision' || url.pathname === '/api/activate') {
+    const provision = url.pathname === '/api/provision';
+    if (provision && !access) throw new HttpError(401, 'Entre para continuar.');
+    const input = await readJson(req);
+    const data = await upstream('/functions/v1/fd-onboarding', {
+      token:provision ? access : undefined,
+      body:{ action:provision ? 'provision' : 'activate', input }
+    });
+    return json(res, 200, data);
   }
   if (url.pathname === '/api/command') {
     if (!access) throw new HttpError(401, 'Entre para continuar.');
@@ -174,21 +200,24 @@ export function createApp() {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.gstatic.com https://*.google.com; worker-src 'self' blob:; frame-src https://*.google.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname === '/health') return json(res, 200, { status: 'ok' });
       if (url.pathname.startsWith('/api/')) return await api(req, res, url);
       if (!['GET', 'HEAD'].includes(req.method)) throw new HttpError(405, 'Método indisponível.');
+      if (url.pathname === '/') {
+        res.writeHead(308, { Location: '/cliente/' + url.search });
+        return res.end();
+      }
       if (routes.has(url.pathname + '/')) {
         res.writeHead(308, { Location: url.pathname + '/' + url.search });
         return res.end();
       }
       const path = routes.has(url.pathname) ? '/index.html' : decodeURIComponent(url.pathname);
-      const vendor = /^\/vendor\/leaflet\/(leaflet\.(?:js|css)|images\/[a-z0-9-]+\.png)$/.exec(path);
-      const file = vendor ? resolve(leaflet, vendor[1]) : resolve(root, '.' + path);
+      const file = resolve(root, '.' + path);
       const type = mime[extname(file)];
-      if ((!vendor && !file.startsWith(root + sep)) || !type || !(await stat(file).catch(() => null))?.isFile()) {
+      if (!file.startsWith(root + sep) || !type || !(await stat(file).catch(() => null))?.isFile()) {
         throw new HttpError(404, 'Página não encontrada.');
       }
       res.writeHead(200, {
