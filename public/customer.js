@@ -245,7 +245,7 @@ export function customer(context) {
     const list = $('#order-list');
     async function refreshOrders() {
       try {
-        const orders = await command('orders');
+        const orders = await command('orders',{ view:'customer' });
         if (!list.isConnected) return;
         const markup = orders.length ? '<div class="order-grid">' + orders.map(order => orderCard(order,
           order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true })).join('') +
@@ -277,8 +277,15 @@ export function customer(context) {
   }
 
   loadCatalog().then(() => render());
-  window.addEventListener('focus', async () => {
-    if (['inicio','lojas'].includes(route())) { await loadCatalog(); render(); }
-  });
+  async function refreshCatalog() {
+    const view = route();
+    if (view === 'pedidos' || $('#dialog').open) return;
+    const before = JSON.stringify(stores);
+    const hadError = Boolean(error);
+    await loadCatalog();
+    if (route() === view && !$('#dialog').open && (before !== JSON.stringify(stores) || hadError !== Boolean(error))) render();
+  }
+  window.addEventListener('hashchange',refreshCatalog);
+  window.addEventListener('focus',refreshCatalog);
   return { render, addressDialog, updateHeader };
 }

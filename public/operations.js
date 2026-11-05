@@ -174,7 +174,7 @@ export function operations(page, context) {
         heartbeat = Date.now();
       }
       const [orders, stores, couriers, offers] = await Promise.all([
-        command('orders'),
+        command('orders',{ view:config.role }),
         page === 'entregador' ? Promise.resolve([]) : command('managed_stores'),
         page === 'admin' ? command('couriers') : Promise.resolve([]),
         page === 'entregador' && online ? command('offers') : Promise.resolve([])

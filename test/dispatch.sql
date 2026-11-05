@@ -52,7 +52,7 @@ begin
 
   perform set_config('request.jwt.claim.sub',foreign_buyer::text,true);
   perform public.fd_api('session');
-  if public.fd_api('orders') <> '[]'::jsonb then raise exception 'Buyer can read another buyer order'; end if;
+  if public.fd_api('orders','{"view":"customer"}') <> '[]'::jsonb then raise exception 'Buyer can read another buyer order'; end if;
   begin
     perform public.fd_api('transition',jsonb_build_object('id',order_id,'status','cancelled'));
     raise exception 'Buyer can cancel another buyer order';
@@ -73,6 +73,10 @@ begin
   end loop;
   perform set_config('request.jwt.claim.sub',courier1::text,true);
   result := public.fd_api('transition',jsonb_build_object('id',order_id,'status','assigned'));
+  if jsonb_array_length(public.fd_api('orders','{"view":"courier"}')) <> 1
+     or public.fd_api('orders','{"view":"customer"}') <> '[]'::jsonb then
+    raise exception 'Courier operations and shopping history were not separated';
+  end if;
   if result->>'address' <> 'Rua Cliente 456' then raise exception 'Assigned courier cannot see destination'; end if;
   perform set_config('request.jwt.claim.sub',courier2::text,true);
   begin
