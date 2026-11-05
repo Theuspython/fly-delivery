@@ -69,10 +69,14 @@ const formError = '<p class="form-error" data-form-error role="alert"></p>';
 
 function auth() {
   if (page === 'cliente') return customerAuth('login');
-  const el = modal('Entre no Fly Delivery',
-    '<form class="form-stack" id="auth-form">' + emailInput + passwordInput('current-password') + formError +
+  const admin = page === 'admin';
+  const loginField = admin ? '<label>Login<input name="login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required></label>' : emailInput;
+  const secretField = admin ? '<label>Senha<input name="password" type="password" autocomplete="current-password" required></label>' :
+    passwordInput('current-password');
+  const el = modal(admin ? 'Acesso administrativo' : 'Entre no Fly Delivery',
+    '<form class="form-stack" id="auth-form">' + loginField + secretField + formError +
     '<button class="btn primary wide" type="submit">Entrar</button></form>',
-    'Use o e-mail e a senha da sua conta.');
+    admin ? 'Use o login e a senha configurados no Railway.' : 'Use o e-mail e a senha da sua conta.');
   bindSubmit($('#auth-form',el), async fields => {
     await api('login',Object.fromEntries(fields));
     await loadSession();
@@ -131,7 +135,7 @@ function renderApp() {
 }
 
 function account() {
-  const el = modal('Minha conta','<p class="dialog-copy">' + esc(page === 'cliente' && profile ? profile.name : current.email) + '</p>' +
+  const el = modal('Minha conta','<p class="dialog-copy">' + esc(page === 'cliente' && profile ? profile.name : page === 'admin' ? 'Administrador' : current.email) + '</p>' +
     '<button class="btn outline" data-logout>Sair</button>');
   $('[data-logout]',el).onclick = async () => {
     try {

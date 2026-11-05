@@ -125,36 +125,37 @@ async function requireRailway(request: Request) {
   let difference = 0;
   for (let i=0; i<railwayBridgeDigest.length; i++) difference |= digest.charCodeAt(i) ^ railwayBridgeDigest.charCodeAt(i);
   if (difference !== 0) throw new Failure(403,'Operação restrita ao servidor.');
-
+  return bridge;
 }
 
-async function adminLogin(request: Request, input: Record<string,unknown>) {
-  await requireRailway(request);
-  const email = typeof input.email === 'string' ? input.email.trim().toLowerCase() : '';
-  const password = input.password;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 ||
-      typeof password !== 'string' || password.length < 12 || new TextEncoder().encode(password).length > 72) {
-    throw new Failure(400,'Confira o e-mail e a senha inicial nas variáveis do Railway.');
-  }
+async function adminLogin(request: Request) {
+  const bridge = await requireRailway(request);
+  const bytes = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw',bytes.encode(bridge),{ name:'HMAC',hash:'SHA-256' },false,['sign']);
+  const signature = await crypto.subtle.sign('HMAC',key,bytes.encode('fly-delivery/railway-admin/v1'));
+  const password = 'Fd!7' + Array.from(new Uint8Array(signature),byte => byte.toString(16).padStart(2,'0')).join('');
+  const email = 'fd-admin-' + railwayBridgeDigest.slice(0,24) + '@fly-delivery-piloto.up.railway.app';
 
   const signIn = () => call('/auth/v1/token?grant_type=password',{ body:{ email,password } });
   let login = await signIn();
   if ((login.data?.error_code ?? login.data?.code) === 'invalid_credentials') {
-    const created = await call('/auth/v1/admin/users',{ admin:true,body:{ email,password,email_confirm:true } });
+    const created = await call('/auth/v1/admin/users',{ admin:true,body:{
+      email,password,email_confirm:true,app_metadata:{ fly_delivery_railway_admin:true }
+    } });
     const code = created.data?.error_code ?? created.data?.code;
     if (!created.response.ok && !['email_exists','user_already_exists'].includes(code)) {
-      throw new Failure(409,'Não foi possível criar a conta administrativa. Confira as variáveis do Railway.');
+      throw new Failure(503,'Não foi possível iniciar a sessão administrativa. Tente novamente.');
     }
     login = await signIn();
   }
   if (login.response.status === 429) throw new Failure(429,'Muitas tentativas. Aguarde e tente de novo.');
-  if (!login.response.ok || !login.data?.user?.id || !login.data?.access_token) {
-    throw new Failure(409,'Se o e-mail já tem conta no Supabase, configure a senha atual dessa conta no Railway.');
+  if (!login.response.ok || login.data?.user?.app_metadata?.fly_delivery_railway_admin !== true || !login.data?.access_token) {
+    throw new Failure(503,'Não foi possível iniciar a sessão administrativa. Tente novamente.');
   }
   const { response,data } = await call('/rest/v1/rpc/fd_grant_railway_admin',{ admin:true,body:{
     email_address:email, verified_user:login.data.user.id
   } });
-  if (!response.ok || data !== true) throw new Failure(409,'Não foi possível habilitar este perfil como administrador.');
+  if (!response.ok || data !== true) throw new Failure(503,'Não foi possível habilitar a sessão administrativa.');
   const { access_token,refresh_token,expires_in } = login.data;
   return { access_token,refresh_token,expires_in };
 }
@@ -215,7 +216,7 @@ Deno.serve(async request => {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Failure(400,'Dados inválidos.');
     if (!['provision','activate','admin_login','customer_register','customer_login'].includes(action)) throw new Failure(400,'Ação inválida.');
     const result = action === 'provision' ? await provision(request,input) :
-      action === 'activate' ? await activate(input) : action === 'admin_login' ? await adminLogin(request,input) :
+      action === 'activate' ? await activate(input) : action === 'admin_login' ? await adminLogin(request) :
       await customerAuth(request,input,action === 'customer_register');
     return new Response(JSON.stringify(result),{ headers });
   } catch (error) {

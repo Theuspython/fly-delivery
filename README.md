@@ -23,7 +23,7 @@ A configuração do Railway usa `/health` como verificação do processo. Config
 
 ## Primeira operação
 
-1. Nas variáveis do projeto Railway, preencha `FLY_DELIVERY_ADMIN_LOGIN` com o e-mail e `FLY_DELIVERY_ADMIN_PASSWORD` com uma senha de pelo menos 12 caracteres. Entre na Administração com esses dados uma vez. Se o e-mail já existe no Auth, use a senha atual. Após a habilitação, a conta continua entrando pelo Supabase Auth. O token interno `FD_ADMIN_BRIDGE_TOKEN` autentica a comunicação do Railway com a função de configuração inicial.
+1. Nas variáveis do projeto Railway, preencha `FLY_DELIVERY_ADMIN_LOGIN` com o login escolhido (por exemplo, `admin`) e `FLY_DELIVERY_ADMIN_PASSWORD` com a senha. Aplique as alterações e entre na Administração com esses valores. `FD_ADMIN_BRIDGE_TOKEN` autentica a comunicação interna com o Supabase, e `FD_CUSTOMER_LOOKUP_KEY` protege os identificadores de clientes por CPF.
 2. Na administração, cadastre o estabelecimento, informe o e-mail do responsável, marque a retirada e escolha se deseja publicar a loja. Cadastre também os entregadores pelo painel.
 3. Para contas novas, o painel gera um link individual de ativação. Entregue-o diretamente ao titular da conta para que ele defina a senha. Contas confirmadas existentes são vinculadas pelo e-mail. Na área da loja, cadastre os produtos e abra para pedidos.
 4. O cliente cria a conta com nome, CPF, celular e senha. O acesso é feito com CPF e senha. Na vitrine, seleciona itens de uma loja e, no carrinho, marca o endereço, escolhe o pagamento na entrega e envia o pedido. O banco valida o raio e congela os preços confirmados.

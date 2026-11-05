@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL('../public/', import.meta.url)).replace(/\/$/
 const supabase = process.env.SUPABASE_URL?.replace(/\/$/, '');
 const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
 const googleMapsKey = process.env.GOOGLE_MAPS_BROWSER_KEY?.trim();
-const adminEmail = process.env.FLY_DELIVERY_ADMIN_LOGIN?.trim().toLowerCase();
+const adminLogin = process.env.FLY_DELIVERY_ADMIN_LOGIN?.trim();
 const adminPassword = process.env.FLY_DELIVERY_ADMIN_PASSWORD;
 const adminBridge = process.env.FD_ADMIN_BRIDGE_TOKEN;
 const customerLookupKey = process.env.FD_CUSTOMER_LOOKUP_KEY;
@@ -114,10 +114,29 @@ async function readJson(req) {
   }
 }
 
-function isConfiguredAdmin(email,password) {
-  if (email.toLowerCase() !== adminEmail || !adminPassword || adminPassword === 'PREENCHER') return false;
+const adminFailures = new Map();
+const adminAttemptWindow = 15 * 60 * 1000;
+
+function verifyAdminLogin(req,input) {
+  if (!adminLogin || adminLogin === 'PREENCHER' || !adminPassword || adminPassword === 'PREENCHER' || !adminBridge) {
+    throw new HttpError(503,'Preencha FLY_DELIVERY_ADMIN_LOGIN e FLY_DELIVERY_ADMIN_PASSWORD no Railway e aplique as alterações.');
+  }
+  const now = Date.now();
+  const client = String(req.headers['x-real-ip'] ?? req.socket.remoteAddress ?? '').slice(0,64);
+  for (const [key,attempt] of adminFailures) {
+    if (attempt.until <= now) adminFailures.delete(key);
+  }
+  const key = adminFailures.has(client) || adminFailures.size < 2048 ? client : 'overflow';
+  const attempt = adminFailures.get(key) ?? { count:0, until:now + adminAttemptWindow };
+  if (attempt.count >= 10) throw new HttpError(429,'Muitas tentativas. Aguarde alguns minutos.');
+  const login = typeof input?.login === 'string' ? input.login.trim() : '';
+  const password = typeof input?.password === 'string' ? input.password : '';
   const digest = value => createHash('sha256').update(value).digest();
-  return timingSafeEqual(digest(password),digest(adminPassword));
+  if (!timingSafeEqual(digest(login),digest(adminLogin)) || !timingSafeEqual(digest(password),digest(adminPassword))) {
+    adminFailures.set(key,{ count:attempt.count+1,until:attempt.until });
+    throw new HttpError(401,'Login ou senha incorretos.');
+  }
+  adminFailures.delete(key);
 }
 
 function cpfLoginId(value) {
@@ -204,6 +223,15 @@ async function api(req, res, url) {
     if (signup && sessionCookie !== 'fd_cliente_access') {
       throw new HttpError(403,'O cadastro público é destinado aos clientes.');
     }
+    if (sessionCookie === 'fd_admin_access') {
+      verifyAdminLogin(req,input);
+      const data = await upstream('/functions/v1/fd-onboarding',{
+        token:adminBridge,body:{ action:'admin_login',input:{} }
+      });
+      if (!data?.access_token) throw new HttpError(502,'Não foi possível iniciar a sessão administrativa.');
+      setSession(req,res,data);
+      return json(res,200,{ signedIn:true });
+    }
     if (sessionCookie === 'fd_cliente_access' && (signup || Object.hasOwn(input ?? {},'cpf'))) {
       const password = input?.password;
       if (typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password) > 72) {
@@ -223,20 +251,7 @@ async function api(req, res, url) {
     if (!email.includes('@') || email.length > 254 || typeof password !== 'string' || password.length < 8 || password.length > 128) {
       throw new HttpError(400, 'Informe um e-mail válido e uma senha de 8 a 128 caracteres.');
     }
-    const credentials = { email,password };
-    let data;
-    if (sessionCookie === 'fd_admin_access' && isConfiguredAdmin(email,password)) {
-      if (password.length < 12 || Buffer.byteLength(password) > 72) {
-        throw new HttpError(400,'Use uma senha inicial com pelo menos 12 caracteres e até 72 bytes.');
-      }
-      if (!adminBridge) throw new HttpError(503,'O cadastro administrativo ainda não está configurado.');
-      data = await upstream('/functions/v1/fd-onboarding',{
-        token:adminBridge,body:{ action:'admin_login',input:credentials }
-      });
-    }
-    if (!data?.access_token) {
-      data = await upstream('/auth/v1/token?grant_type=password',{ body:credentials });
-    }
+    const data = await upstream('/auth/v1/token?grant_type=password',{ body:{ email,password } });
     if (data.access_token) setSession(req, res, data);
     return json(res, 200, { signedIn: Boolean(data.access_token) });
   }
