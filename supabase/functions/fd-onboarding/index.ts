@@ -1,6 +1,7 @@
 const base = Deno.env.get('SUPABASE_URL');
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const railwayBridgeDigest = '657bcd8e0014f38e777f0ff960486939cbd7dc1e362822355386371f1439e29a';
 
 class Failure extends Error {
   status: number;
@@ -116,35 +117,40 @@ async function activate(input: Record<string,unknown>) {
   return { ok:true };
 }
 
-async function adminLogin(input: Record<string,unknown>) {
+async function adminLogin(request: Request, input: Record<string,unknown>) {
+  const bridge = request.headers.get('Authorization')?.match(/^Bearer ([A-Za-z0-9_-]{43})$/i)?.[1];
+  if (!bridge) throw new Failure(403,'Configuração administrativa restrita ao servidor.');
+  const hashed = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(bridge));
+  const digest = Array.from(new Uint8Array(hashed),byte => byte.toString(16).padStart(2,'0')).join('');
+  let difference = 0;
+  for (let i=0; i<railwayBridgeDigest.length; i++) difference |= digest.charCodeAt(i) ^ railwayBridgeDigest.charCodeAt(i);
+  if (difference !== 0) throw new Failure(403,'Configuração administrativa restrita ao servidor.');
+
   const email = typeof input.email === 'string' ? input.email.trim().toLowerCase() : '';
   const password = input.password;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 ||
       typeof password !== 'string' || password.length < 12 || new TextEncoder().encode(password).length > 72) {
-    return { configured:false };
+    throw new Failure(400,'Confira o e-mail e a senha inicial nas variáveis do Railway.');
   }
-  const verifySetup = async (id?: string) => {
-    const { response,data } = await call('/rest/v1/rpc/fd_admin_bootstrap',{ admin:true,body:{
-      email_address:email, supplied_password:password, verified_user:id ?? null
-    } });
-    if (!response.ok) throw new Failure(503,'Não foi possível verificar a configuração administrativa.');
-    return data;
-  };
-  const setup = await verifySetup();
-  if (!setup?.authorized) return { configured:false };
-  if (!setup.exists) {
+
+  const signIn = () => call('/auth/v1/token?grant_type=password',{ body:{ email,password } });
+  let login = await signIn();
+  if ((login.data?.error_code ?? login.data?.code) === 'invalid_credentials') {
     const created = await call('/auth/v1/admin/users',{ admin:true,body:{ email,password,email_confirm:true } });
     const code = created.data?.error_code ?? created.data?.code;
     if (!created.response.ok && !['email_exists','user_already_exists'].includes(code)) {
-      throw new Failure(409,'Não foi possível criar a conta administrativa. Confira os dados do Vault.');
+      throw new Failure(409,'Não foi possível criar a conta administrativa. Confira as variáveis do Railway.');
     }
+    login = await signIn();
   }
-  const login = await call('/auth/v1/token?grant_type=password',{ body:{ email,password } });
+  if (login.response.status === 429) throw new Failure(429,'Muitas tentativas. Aguarde e tente de novo.');
   if (!login.response.ok || !login.data?.user?.id || !login.data?.access_token) {
-    throw new Failure(409,'Se o e-mail já tem conta no Supabase, use a senha atual dessa conta no Vault.');
+    throw new Failure(409,'Se o e-mail já tem conta no Supabase, configure a senha atual dessa conta no Railway.');
   }
-  const result = await verifySetup(login.data.user.id);
-  if (!result?.authorized) return { configured:false };
+  const { response,data } = await call('/rest/v1/rpc/fd_grant_railway_admin',{ admin:true,body:{
+    email_address:email, verified_user:login.data.user.id
+  } });
+  if (!response.ok || data !== true) throw new Failure(409,'Não foi possível habilitar este perfil como administrador.');
   const { access_token,refresh_token,expires_in } = login.data;
   return { access_token,refresh_token,expires_in };
 }
@@ -160,7 +166,7 @@ Deno.serve(async request => {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Failure(400,'Dados inválidos.');
     if (action !== 'provision' && action !== 'activate' && action !== 'admin_login') throw new Failure(400,'Ação inválida.');
     const result = action === 'provision' ? await provision(request,input) :
-      action === 'activate' ? await activate(input) : await adminLogin(input);
+      action === 'activate' ? await activate(input) : await adminLogin(request,input);
     return new Response(JSON.stringify(result),{ headers });
   } catch (error) {
     if (error instanceof Failure || error instanceof SyntaxError) {

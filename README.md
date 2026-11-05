@@ -19,11 +19,11 @@ npm test
 npm start
 ```
 
-A configuração do Railway usa `/health` como verificação do processo. Configure `GOOGLE_MAPS_BROWSER_KEY` no Vault do Supabase com uma chave de navegador da Maps JavaScript API restrita ao domínio da aplicação. A variável de ambiente de mesmo nome serve para desenvolvimento local. O catálogo público usa `/api/catalog` para verificar também a comunicação com o banco. As chaves e o projeto são configurados por ambiente.
+A configuração do Railway usa `/health` como verificação do processo. Configure `GOOGLE_MAPS_BROWSER_KEY` nas variáveis do projeto Railway com uma chave de navegador da Maps JavaScript API restrita ao domínio da aplicação. O catálogo público usa `/api/catalog` para verificar também a comunicação com o banco. As chaves e o projeto são configurados por ambiente.
 
 ## Primeira operação
 
-1. No Vault do Supabase, preencha `FLY_DELIVERY_ADMIN_LOGIN` com o e-mail e `FLY_DELIVERY_ADMIN_PASSWORD` com uma senha de pelo menos 12 caracteres. Entre na Administração com esses dados uma vez. Se o e-mail já existe no Auth, use a senha atual. Após a habilitação, o valor temporário volta para `PREENCHER` e a conta continua entrando pelo Supabase Auth.
+1. Nas variáveis do projeto Railway, preencha `FLY_DELIVERY_ADMIN_LOGIN` com o e-mail e `FLY_DELIVERY_ADMIN_PASSWORD` com uma senha de pelo menos 12 caracteres. Entre na Administração com esses dados uma vez. Se o e-mail já existe no Auth, use a senha atual. Após a habilitação, a conta continua entrando pelo Supabase Auth. O token interno `FD_ADMIN_BRIDGE_TOKEN` autentica a comunicação do Railway com a função de configuração inicial.
 2. Na administração, cadastre o estabelecimento, informe o e-mail do responsável, marque a retirada e escolha se deseja publicar a loja. Cadastre também os entregadores pelo painel.
 3. Para contas novas, o painel gera um link individual de ativação. Entregue-o diretamente ao titular da conta para que ele defina a senha. Contas confirmadas existentes são vinculadas pelo e-mail. Na área da loja, cadastre os produtos e abra para pedidos.
 4. O cliente cria a conta com nome, celular, e-mail e senha e confirma seu e-mail. Após entrar, seleciona itens de uma loja e, no carrinho, marca o endereço, escolhe o pagamento na entrega e envia o pedido. O banco valida o raio e congela os preços confirmados.

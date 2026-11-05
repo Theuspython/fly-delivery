@@ -2,12 +2,16 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { RealtimeClient } from '@supabase/realtime-js';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url)).replace(/\/$/, '');
 const supabase = process.env.SUPABASE_URL?.replace(/\/$/, '');
 const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-const googleMapsKey = process.env.GOOGLE_MAPS_BROWSER_KEY;
+const googleMapsKey = process.env.GOOGLE_MAPS_BROWSER_KEY?.trim();
+const adminEmail = process.env.FLY_DELIVERY_ADMIN_LOGIN?.trim().toLowerCase();
+const adminPassword = process.env.FLY_DELIVERY_ADMIN_PASSWORD;
+const adminBridge = process.env.FD_ADMIN_BRIDGE_TOKEN;
 const routes = new Set(['/cliente/', '/loja/', '/entregador/', '/admin/']);
 const mime = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -109,6 +113,12 @@ async function readJson(req) {
   }
 }
 
+function isConfiguredAdmin(email,password) {
+  if (email.toLowerCase() !== adminEmail || !adminPassword || adminPassword === 'PREENCHER') return false;
+  const digest = value => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(password),digest(adminPassword));
+}
+
 function profileFields(input) {
   const name = typeof input?.name === 'string' ? input.name.trim() : '';
   let phone = typeof input?.phone === 'string' ? input.phone.replace(/\D/g,'') : '';
@@ -164,9 +174,10 @@ async function api(req, res, url) {
   }
   if (url.pathname === '/api/order-updates') return streamOrders(req,res);
   if (url.pathname === '/api/maps/browser-config') {
-    const key = await upstream('/rest/v1/rpc/fd_google_browser_key',{ body:{} }).catch(() => null) || googleMapsKey;
-    if (!key) throw new HttpError(503, 'O Google Maps ainda não está configurado. Você pode usar o GPS.');
-    return json(res, 200, { key });
+    if (!/^AIza[A-Za-z0-9_-]{25,}$/.test(googleMapsKey ?? '')) {
+      throw new HttpError(503, 'O Google Maps ainda não está configurado. Você pode usar o GPS.');
+    }
+    return json(res, 200, { key:googleMapsKey });
   }
   const { sessionCookie, refreshCookie } = cookiesFor(req);
   const cookies = readCookies(req);
@@ -187,9 +198,14 @@ async function api(req, res, url) {
     if (signup && input.confirmation !== password) throw new HttpError(400,'As senhas precisam ser iguais.');
     const credentials = { email,password };
     let data;
-    if (!signup && sessionCookie === 'fd_admin_access') {
-      data = await upstream('/functions/v1/fd-onboarding',{ body:{ action:'admin_login',input:credentials } })
-        .catch(error => { if (error.status === 409) throw error; return null; });
+    if (!signup && sessionCookie === 'fd_admin_access' && isConfiguredAdmin(email,password)) {
+      if (password.length < 12 || Buffer.byteLength(password) > 72) {
+        throw new HttpError(400,'Use uma senha inicial com pelo menos 12 caracteres e até 72 bytes.');
+      }
+      if (!adminBridge) throw new HttpError(503,'O cadastro administrativo ainda não está configurado.');
+      data = await upstream('/functions/v1/fd-onboarding',{
+        token:adminBridge,body:{ action:'admin_login',input:credentials }
+      });
     }
     if (!data?.access_token) {
       data = await upstream(signup ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password', {
