@@ -1,6 +1,6 @@
 import { mapPicker } from './google-map.js';
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit, geo,
-  categories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments } from './shared.js';
+  categories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
 
 function stored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
@@ -17,17 +17,20 @@ export function customer(context) {
   let loading;
   let category = 'Todas';
   let search = '';
-  let cart = stored('fd-cart', { store:null, items:{} });
-  let address = stored('fd-address', null);
+  const cartKey = 'fd-cart:' + context.user.id;
+  const requestKey = 'fd-request:' + context.user.id;
+  let cart = stored(cartKey, { store:null, items:{} });
+  let address = null;
+  let active = true;
   let payment = 'pix_delivery';
-  let requestId = stored('fd-request', null);
+  let requestId = stored(requestKey, null);
   let ordersTimer;
+  let orderStream;
   let previousView;
   const route = () => location.hash.slice(1) || 'inicio';
 
   function updateHeader() {
     $('#cart-count').textContent = Object.values(cart.items).reduce((sum, amount) => sum + amount, 0);
-    $('#top-address').textContent = address?.text || 'Informe seu endereço';
   }
 
   async function loadCatalog() {
@@ -42,8 +45,8 @@ export function customer(context) {
 
   function saveCart() {
     requestId = null;
-    localStorage.removeItem('fd-request');
-    localStorage.setItem('fd-cart', JSON.stringify(cart));
+    localStorage.removeItem(requestKey);
+    localStorage.setItem(cartKey, JSON.stringify(cart));
     updateHeader();
   }
 
@@ -51,6 +54,7 @@ export function customer(context) {
     if (cart.store && cart.store !== store.id) {
       if (!window.confirm('Você tem itens de outra loja. Deseja começar um novo carrinho?')) return;
       cart = { store:store.id, items:{} };
+      address = null;
     }
     const quantity = (cart.items[product.id] ?? 0) + increment;
     if (quantity > 25) return toast('Você pode adicionar até 25 unidades por item.');
@@ -59,7 +63,7 @@ export function customer(context) {
       cart.store = store.id;
       cart.items[product.id] = quantity;
     } else delete cart.items[product.id];
-    if (!Object.keys(cart.items).length) cart.store = null;
+    if (!Object.keys(cart.items).length) { cart.store = null; address = null; }
     saveCart();
     render();
     if (increment > 0 && route().startsWith('loja/')) toast(product.name + ' no carrinho.');
@@ -137,6 +141,7 @@ export function customer(context) {
   }
 
   function addressDialog() {
+    if (route() !== 'carrinho' || !cart.store || !Object.keys(cart.items).length) return;
     let selected = validPoint(address) ? address : null;
     let picker;
     const closePicker = () => picker?.remove();
@@ -163,9 +168,8 @@ export function customer(context) {
     bindSubmit($('#address-form',el), async fields => {
       if (!selected) throw new Error('Marque o ponto no mapa antes de confirmar.');
       address = { text:String(fields.get('address')).trim(), lat:selected.lat, lng:selected.lng };
-      localStorage.setItem('fd-address',JSON.stringify(address));
       requestId = null;
-      localStorage.removeItem('fd-request');
+      localStorage.removeItem(requestKey);
       el.close();
       updateHeader();
       if (route() === 'carrinho') render();
@@ -212,7 +216,7 @@ export function customer(context) {
       if (!address) return addressDialog();
       if (!context.user) return context.signIn();
       requestId ??= crypto.randomUUID();
-      localStorage.setItem('fd-request',JSON.stringify(requestId));
+      localStorage.setItem(requestKey,JSON.stringify(requestId));
       try {
         await command('place', { store_id:store.id, request_id:requestId, address:address.text, lat:address.lat, lng:address.lng,
           payment:fields.get('payment'), fee:store.fee, items:products.map(product => ({
@@ -228,6 +232,7 @@ export function customer(context) {
         throw err;
       }
       cart = { store:null,items:{} };
+      address = null;
       saveCart();
       location.hash = 'pedidos';
       toast('Pedido enviado à loja.');
@@ -241,25 +246,48 @@ export function customer(context) {
         '<button class="btn primary" data-signin>Entrar</button></div>') + '</div></div>';
     if (!context.user) return;
     const list = $('#order-list');
+    let reading = false;
+    let queued = false;
+    let statusByOrder;
     async function refreshOrders() {
+      if (reading) { queued = true; return; }
+      reading = true;
       try {
         const orders = await command('orders',{ view:'customer' });
         if (!list.isConnected) return;
+        if (statusByOrder) {
+          const changed = orders.find(order => statusByOrder.has(order.id) && statusByOrder.get(order.id) !== order.status);
+          if (changed) toast(changed.store + ' · ' + statuses[changed.status]);
+        }
+        statusByOrder = new Map(orders.map(order => [order.id,order.status]));
         const markup = orders.length ? '<div class="order-grid">' + orders.map(order => orderCard(order,
-          order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true })).join('') +
+          order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true,timeline:true })).join('') +
           '</div>' : '<div class="panel">' + empty('Nenhum pedido ainda','Explore os cardápios para começar.') + '</div>';
-        if (list.innerHTML !== markup && !list.contains(document.activeElement)) list.innerHTML = markup;
+        if (list.innerHTML !== markup) list.innerHTML = markup;
       } catch (err) {
         if (list.isConnected && !list.querySelector('.order-grid')) list.innerHTML = empty('Pedidos indisponíveis',err.message);
+      } finally {
+        reading = false;
+        if (queued && list.isConnected) { queued = false; refreshOrders(); }
       }
     }
-    bindTransitions(list,async () => { document.activeElement?.blur(); await refreshOrders(); });
+    bindTransitions(list,refreshOrders);
     refreshOrders();
-    ordersTimer = setInterval(refreshOrders,8000);
+    orderStream = new EventSource('/api/order-updates');
+    orderStream.addEventListener('orders',refreshOrders);
+    ordersTimer = setInterval(async () => {
+      await refreshOrders();
+      if (list.isConnected && orderStream.readyState === EventSource.CLOSED) {
+        orderStream = new EventSource('/api/order-updates');
+        orderStream.addEventListener('orders',refreshOrders);
+      }
+    },15000);
   }
 
   function render() {
+    if (!active) return;
     clearInterval(ordersTimer);
+    orderStream?.close();
     const view = route();
     if (view === 'pedidos') orderView();
     else if (view === 'carrinho' && loaded) cartView();
@@ -277,7 +305,7 @@ export function customer(context) {
   loadCatalog().then(() => render());
   async function refreshCatalog() {
     const view = route();
-    if (view === 'pedidos' || $('#dialog').open) return;
+    if (!active || view === 'pedidos' || $('#dialog').open) return;
     const before = JSON.stringify(stores);
     const hadError = Boolean(error);
     await loadCatalog();
@@ -285,5 +313,12 @@ export function customer(context) {
   }
   window.addEventListener('hashchange',refreshCatalog);
   window.addEventListener('focus',refreshCatalog);
-  return { render, addressDialog, updateHeader };
+  function stop() {
+    active = false;
+    clearInterval(ordersTimer);
+    orderStream?.close();
+    window.removeEventListener('hashchange',refreshCatalog);
+    window.removeEventListener('focus',refreshCatalog);
+  }
+  return { render, stop, updateHeader };
 }

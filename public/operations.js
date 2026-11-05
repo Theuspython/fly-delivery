@@ -152,7 +152,7 @@ function storeMarkup(store, role) {
 
 function merchantActions(order) {
   return (order.status === 'placed' ? transitionButton(order,'preparing','Confirmar e preparar') : '') +
-    (order.status === 'preparing' ? transitionButton(order,'ready','Liberar para entrega') : '') +
+    (order.status === 'preparing' ? transitionButton(order,'ready','Pedido pronto · chamar motoboy') : '') +
     (['placed','preparing','ready'].includes(order.status) ? transitionButton(order,'cancelled','Cancelar','outline') : '');
 }
 function courierActions(order) {

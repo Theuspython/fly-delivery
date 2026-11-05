@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RealtimeClient } from '@supabase/realtime-js';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url)).replace(/\/$/, '');
 const supabase = process.env.SUPABASE_URL?.replace(/\/$/, '');
@@ -108,8 +109,51 @@ async function readJson(req) {
   }
 }
 
+function profileFields(input) {
+  const name = typeof input?.name === 'string' ? input.name.trim() : '';
+  let phone = typeof input?.phone === 'string' ? input.phone.replace(/\D/g,'') : '';
+  if (phone.length > 11 && phone.startsWith('55')) phone = phone.slice(2);
+  if (name.length < 3 || name.length > 120 || !/^[1-9][0-9]{9,10}$/.test(phone)) {
+    throw new HttpError(400, 'Informe seu nome e um celular válido com DDD.');
+  }
+  return { name,phone };
+}
+
+async function streamOrders(req,res) {
+  if (req.headers['sec-fetch-site'] === 'cross-site') throw new HttpError(403,'Origem da requisição inválida.');
+  const token = readCookies(req).fd_cliente_access;
+  if (!token) throw new HttpError(401,'Entre para continuar.');
+  const identity = await upstream('/auth/v1/user',{ method:'GET',token });
+  if (res.destroyed) return;
+  const url = new URL('/realtime/v1',supabase);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  const client = new RealtimeClient(url.toString(),{
+    params:{ apikey:publishableKey }, accessToken:async () => token, transport:WebSocket
+  });
+  const notify = () => { if (!res.writableEnded && !res.destroyed) res.write('event: orders\ndata: {}\n\n'); };
+  const channel = client.channel('fd-customer-orders').on('postgres_changes',{
+    event:'*',schema:'public',table:'fd_order_updates',filter:'customer_id=eq.' + identity.id
+  },notify);
+
+  res.writeHead(200,{
+    'Content-Type':'text/event-stream','Cache-Control':'no-store, no-transform','X-Accel-Buffering':'no'
+  });
+  res.write('retry: 3000\n\n');
+  const heartbeat = setInterval(() => res.write(': heartbeat\n\n'),15000);
+  const timeout = setTimeout(() => res.end(),240000);
+  res.once('close',() => {
+    clearInterval(heartbeat);
+    clearTimeout(timeout);
+    client.disconnect().catch(() => {});
+  });
+  channel.subscribe(status => {
+    if (status === 'SUBSCRIBED') notify();
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') res.end();
+  });
+}
+
 async function api(req, res, url) {
-  const isRead = req.method === 'GET' && ['/api/catalog','/api/maps/browser-config'].includes(url.pathname);
+  const isRead = req.method === 'GET' && ['/api/catalog','/api/maps/browser-config','/api/order-updates'].includes(url.pathname);
   if (!isRead) {
     if (req.method !== 'POST') throw new HttpError(405, 'Método indisponível.');
     const origin = req.headers.origin;
@@ -117,9 +161,11 @@ async function api(req, res, url) {
       throw new HttpError(403, 'Origem da requisição inválida.');
     }
   }
+  if (url.pathname === '/api/order-updates') return streamOrders(req,res);
   if (url.pathname === '/api/maps/browser-config') {
-    if (!googleMapsKey) throw new HttpError(503, 'O Google Maps ainda não está configurado. Você pode usar o GPS.');
-    return json(res, 200, { key:googleMapsKey });
+    const key = await upstream('/rest/v1/rpc/fd_google_browser_key',{ body:{} }).catch(() => null) || googleMapsKey;
+    if (!key) throw new HttpError(503, 'O Google Maps ainda não está configurado. Você pode usar o GPS.');
+    return json(res, 200, { key });
   }
   const { sessionCookie, refreshCookie } = cookiesFor(req);
   const cookies = readCookies(req);
@@ -137,9 +183,18 @@ async function api(req, res, url) {
     }
     const signup = url.pathname.endsWith('/signup');
     if (signup && sessionCookie !== 'fd_cliente_access') throw new HttpError(403, 'O cadastro público é destinado aos clientes.');
-    const data = await upstream(signup ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password', {
-      body: { email, password }
-    });
+    if (signup && input.confirmation !== password) throw new HttpError(400,'As senhas precisam ser iguais.');
+    const credentials = { email,password };
+    let data;
+    if (!signup && sessionCookie === 'fd_admin_access') {
+      data = await upstream('/functions/v1/fd-onboarding',{ body:{ action:'admin_login',input:credentials } })
+        .catch(error => { if (error.status === 409) throw error; return null; });
+    }
+    if (!data?.access_token) {
+      data = await upstream(signup ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password', {
+        body:signup ? { ...credentials,data:{ fly_delivery_customer:profileFields(input) } } : credentials
+      });
+    }
     if (data.access_token) setSession(req, res, data);
     return json(res, 200, { signedIn: Boolean(data.access_token) });
   }
@@ -174,7 +229,8 @@ async function api(req, res, url) {
     if (typeof action !== 'string' || !input || typeof input !== 'object' || Array.isArray(input)) {
       throw new HttpError(400, 'Comando inválido.');
     }
-    const data = await upstream('/rest/v1/rpc/fd_api', { token: access, body: { action, input } });
+    const payload = action === 'customer_profile' && ('name' in input || 'phone' in input) ? profileFields(input) : input;
+    const data = await upstream('/rest/v1/rpc/fd_api', { token: access, body: { action, input:payload } });
     return json(res, 200, data);
   }
   if (url.pathname === '/api/upload') {

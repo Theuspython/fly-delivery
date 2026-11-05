@@ -246,3 +246,19 @@ p { line-height:1.5 }
 .map-coordinates { color:var(--muted); font-size:.85rem }
 .map-coordinates summary { cursor:pointer; padding-block:4px }
 .map-coordinates .fields-two { margin-block:7px }
+
+.customer-auth { display:grid; grid-template-columns:1fr 1fr; gap:18px; padding-block:36px 56px; align-items:stretch; }
+.auth-visual { border-radius:var(--radius); display:flex; flex-direction:column; justify-content:end; gap:10px; padding:26px; color:white; background:linear-gradient(0deg,#2c180ef0,#2c180e0a),url('/assets/burger.webp') center/cover; }
+.auth-visual .overline { color:#ffb69b; }
+.auth-panel { padding:24px; }
+.auth-panel h1 { font-size:clamp(2rem,4vw,3.1rem); margin:6px 0; }
+.auth-panel form { margin-top:16px; }
+.order-timeline { list-style:none; padding:0; margin:14px 0 0; display:grid; gap:7px; }
+.order-timeline li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding-left:13px; position:relative; color:var(--muted); font-size:.85rem; }
+.order-timeline li::before { content:""; width:6px; height:6px; position:absolute; left:0; background:var(--orange); border-radius:50%; }
+.order-timeline li:last-child { font-weight:800; color:var(--ink); }
+@media (max-width:740px) {
+  .customer-auth { grid-template-columns:1fr; padding-block:18px 34px; }
+  .auth-visual { min-height:144px; padding:16px; }
+  .auth-panel { padding:17px; }
+}

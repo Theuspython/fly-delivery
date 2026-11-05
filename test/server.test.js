@@ -52,6 +52,10 @@ test('unauthenticated and cross-origin mutations are rejected', async () => {
   assert.equal(signup.status,403);
   const provision = await fetch(origin + '/api/provision',{ method:'POST',headers,body:'{}' });
   assert.equal(provision.status,401);
+  const updates = await fetch(origin + '/api/order-updates');
+  assert.equal(updates.status,401);
+  const crossSiteUpdates = await fetch(origin + '/api/order-updates',{ headers:{ 'Sec-Fetch-Site':'cross-site' } });
+  assert.equal(crossSiteUpdates.status,403);
   assert.equal((await fetch(origin + '/package.json')).status,404);
   const redirect = await fetch(origin + '/', { redirect:'manual' });
   assert.equal(redirect.headers.get('location'),'/cliente/');

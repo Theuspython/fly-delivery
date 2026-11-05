@@ -116,6 +116,39 @@ async function activate(input: Record<string,unknown>) {
   return { ok:true };
 }
 
+async function adminLogin(input: Record<string,unknown>) {
+  const email = typeof input.email === 'string' ? input.email.trim().toLowerCase() : '';
+  const password = input.password;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 ||
+      typeof password !== 'string' || password.length < 12 || new TextEncoder().encode(password).length > 72) {
+    return { configured:false };
+  }
+  const verifySetup = async (id?: string) => {
+    const { response,data } = await call('/rest/v1/rpc/fd_admin_bootstrap',{ admin:true,body:{
+      email_address:email, supplied_password:password, verified_user:id ?? null
+    } });
+    if (!response.ok) throw new Failure(503,'Não foi possível verificar a configuração administrativa.');
+    return data;
+  };
+  const setup = await verifySetup();
+  if (!setup?.authorized) return { configured:false };
+  if (!setup.exists) {
+    const created = await call('/auth/v1/admin/users',{ admin:true,body:{ email,password,email_confirm:true } });
+    const code = created.data?.error_code ?? created.data?.code;
+    if (!created.response.ok && !['email_exists','user_already_exists'].includes(code)) {
+      throw new Failure(409,'Não foi possível criar a conta administrativa. Confira os dados do Vault.');
+    }
+  }
+  const login = await call('/auth/v1/token?grant_type=password',{ body:{ email,password } });
+  if (!login.response.ok || !login.data?.user?.id || !login.data?.access_token) {
+    throw new Failure(409,'Se o e-mail já tem conta no Supabase, use a senha atual dessa conta no Vault.');
+  }
+  const result = await verifySetup(login.data.user.id);
+  if (!result?.authorized) return { configured:false };
+  const { access_token,refresh_token,expires_in } = login.data;
+  return { access_token,refresh_token,expires_in };
+}
+
 Deno.serve(async request => {
   const headers = { 'Content-Type':'application/json','Cache-Control':'no-store' };
   try {
@@ -125,8 +158,9 @@ Deno.serve(async request => {
     if (raw.length > 16384) throw new Failure(413,'Dados do cadastro muito grandes.');
     const { action,input } = JSON.parse(raw) ?? {};
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Failure(400,'Dados inválidos.');
-    if (action !== 'provision' && action !== 'activate') throw new Failure(400,'Ação inválida.');
-    const result = action === 'provision' ? await provision(request,input) : await activate(input);
+    if (action !== 'provision' && action !== 'activate' && action !== 'admin_login') throw new Failure(400,'Ação inválida.');
+    const result = action === 'provision' ? await provision(request,input) :
+      action === 'activate' ? await activate(input) : await adminLogin(input);
     return new Response(JSON.stringify(result),{ headers });
   } catch (error) {
     if (error instanceof Failure || error instanceof SyntaxError) {

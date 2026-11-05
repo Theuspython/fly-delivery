@@ -46,6 +46,13 @@ begin
   order_input := jsonb_build_object('store_id',store_id,'request_id',request_id,'address','Rua Cliente 456','lat',-19.91,'lng',-43.91,
     'payment','pix_delivery','fee',650,'items',jsonb_build_array(jsonb_build_object('id',product_id,'quantity',2,'price',1990)));
   begin
+    perform public.fd_api('place',order_input);
+    raise exception 'Incomplete customer can order';
+  exception when raise_exception then
+    if sqlerrm not like 'FD: Complete seu cadastro%' then raise; end if;
+  end;
+  perform public.fd_api('customer_profile','{"name":"Cliente Teste","phone":"31987654321"}');
+  begin
     perform public.fd_api('place',order_input || '{"lat":0,"lng":0}'::jsonb);
     raise exception 'Accepted out-of-range order';
   exception when raise_exception then
@@ -101,8 +108,11 @@ begin
   perform set_config('request.jwt.claim.sub',courier1::text,true);
   perform public.fd_api('transition',jsonb_build_object('id',order_id,'status','picked_up'));
   result := public.fd_api('transition',jsonb_build_object('id',order_id,'status','delivered'));
+  if not exists(select 1 from public.fd_order_updates u where u.order_id=(result->>'id')::uuid and u.customer_id=buyer_id) then
+    raise exception 'Order status update did not create a realtime signal';
+  end if;
   if result->>'status' <> 'delivered' or result->'items'->0->>'name' <> 'Pizza Teste' or
     jsonb_array_length(result->'events') <> 6 then raise exception 'Delivery history was not preserved'; end if;
 end $$;
-select 'Fly Delivery: cadastro, checkout, acesso, aceite exclusivo e entrega verificados' as integration;
+select 'Fly Delivery: cadastro, checkout, acesso, sinal de status, aceite exclusivo e entrega verificados' as integration;
 rollback;

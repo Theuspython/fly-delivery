@@ -10,7 +10,7 @@ export const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
 })[char]);
 export const statuses = {
-  placed:'Pedido recebido', preparing:'Em preparo', ready:'Aguardando motoboy',
+  placed:'Pedido recebido', preparing:'Em preparo', ready:'Pronto · aguardando motoboy',
   assigned:'Motoboy a caminho da loja', picked_up:'Saiu para entrega', delivered:'Entregue', cancelled:'Cancelado'
 };
 export const payments = { pix_delivery:'Pix na entrega', card_delivery:'Cartão na entrega', cash_delivery:'Dinheiro na entrega' };
@@ -122,11 +122,16 @@ export function orderCard(order, actions = '', options = {}) {
     '<p>' + (order.items ?? []).map(item => item.quantity + '× ' + esc(item.name)).join(' · ') + '</p>' +
     (options.address ? '<p>' + icon('pin') + ' ' + esc(order.address) + '</p>' : '') +
     '<p>' + esc(payments[order.payment]) + '</p>';
+  const timeline = options.timeline && order.events?.length
+    ? '<ol class="order-timeline" aria-label="Andamento do pedido">' + order.events.map(event =>
+      '<li><span>' + esc(statuses[event.status]) + '</span><time datetime="' + esc(event.created_at) + '">' +
+      new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(event.created_at)) + '</time></li>').join('') + '</ol>'
+    : '';
   return '<article class="order-card"><div class="order-head"><div><span class="overline">#' + esc(order.id.slice(0,8)) +
     '</span><h3>' + esc(order.store) + '</h3></div><span class="status status-' + esc(order.status) + '">' +
     esc(options.offer ? 'Disponível' : statuses[order.status]) + '</span></div><div class="order-body">' + details +
     '<strong>' + money(options.offer ? order.fee : order.subtotal + order.fee) + (options.offer ? ' pela entrega' : '') +
-    '</strong></div>' + (actions ? '<div class="order-actions">' + actions + '</div>' : '') + '</article>';
+    '</strong></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '') + '</article>';
 }
 
 export const transitionButton = (order, status, label, className = 'primary') =>

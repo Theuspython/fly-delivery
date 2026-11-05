@@ -9,5 +9,8 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test"
+  },
+  "dependencies": {
+    "@supabase/realtime-js": "2.119.0"
   }
 }
