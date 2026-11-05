@@ -24,8 +24,8 @@ A configuração do Railway usa `/health` como verificação do processo. Config
 ## Primeira operação
 
 1. Nas variáveis do projeto Railway, preencha `FLY_DELIVERY_ADMIN_LOGIN` com o login escolhido (por exemplo, `admin`) e `FLY_DELIVERY_ADMIN_PASSWORD` com a senha. Aplique as alterações e entre na Administração com esses valores. `FD_ADMIN_BRIDGE_TOKEN` autentica a comunicação interna com o Supabase, e `FD_CUSTOMER_LOOKUP_KEY` protege os identificadores de clientes por CPF.
-2. Na administração, cadastre o estabelecimento, informe o e-mail do responsável, marque a retirada e escolha se deseja publicar a loja. Cadastre também os entregadores pelo painel.
-3. Para contas novas, o painel gera um link individual de ativação. Entregue-o diretamente ao titular da conta para que ele defina a senha. Contas confirmadas existentes são vinculadas pelo e-mail. Na área da loja, cadastre os produtos e abra para pedidos.
+2. Na Administração, crie o estabelecimento com nome, uma ou mais categorias, login e senha inicial. Para entregadores, cadastre o login e a senha. Compartilhe as credenciais em particular com cada titular.
+3. Na área da loja, cadastre os produtos, configure a foto ou logo, o endereço de retirada e os horários da semana e publique a loja. O responsável pode trocar a senha em Minha conta.
 4. O cliente cria a conta com nome, CPF, celular e senha. O acesso é feito com CPF e senha. Na vitrine, seleciona itens de uma loja e, no carrinho, marca o endereço, escolhe o pagamento na entrega e envia o pedido. O banco valida o raio e congela os preços confirmados.
 5. A loja coloca o pedido em preparo e marca como pronto. O entregador disponível, com o app aberto e GPS a até 15 km da retirada, pode aceitar a oferta. O primeiro aceite válido atribui o pedido e libera o endereço. O entregador confirma a retirada e a entrega.
 
@@ -36,7 +36,7 @@ O acompanhamento do cliente recebe sinais do Supabase Realtime com o app aberto.
 - `public/` contém as telas, os manifestos e o service worker. Os mapas usam a API JavaScript do Google Maps, com pino arrastável e opção de GPS.
 - `src/server.js` serve os PWAs e encaminha operações autenticadas com cookies HttpOnly e tokens individuais do Supabase.
 - `supabase/migrations/` contém o schema isolado, a função de acesso, as regras e o bucket de fotos. As tabelas não são expostas diretamente no Data API.
-- `supabase/functions/fd-onboarding/` contém o cadastro administrativo e a ativação. O endpoint valida o token e o papel administrativo antes de usar a credencial de serviço mantida no Supabase.
+- `supabase/functions/fd-onboarding/` contém o cadastro administrativo, o login e a troca de senha. O endpoint valida o token e o papel administrativo antes de usar a credencial de serviço mantida no Supabase.
 - `test/` contém verificações HTTP e um roteiro SQL de integração que usa uma transação com rollback. Rode o SQL apenas num ambiente autorizado.
 
 Fotos ilustrativas da vitrine: [hambúrguer](https://images.unsplash.com/photo-1568901346375-23c9450c58cd), [pizza](https://images.unsplash.com/photo-1574071318508-1cdbab80d002), [sushi](https://images.unsplash.com/photo-1579871494447-9811cf80d66c) e [bowl](https://images.unsplash.com/photo-1511690743698-d9d85f2fbf38), via [Unsplash](https://unsplash.com/license).

@@ -150,6 +150,16 @@ function cpfLoginId(value) {
   return createHmac('sha256',customerLookupKey).update(cpf).digest('hex').slice(0,40);
 }
 
+function operatorIdentity(value,role) {
+  const login = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(login)) {
+    throw new HttpError(400,'Use um login de 3 a 40 caracteres, com letras, números, ponto, hífen ou sublinhado.');
+  }
+  if (!customerLookupKey || !adminBridge) throw new HttpError(503,'O acesso está indisponível.');
+  const operatorId = createHmac('sha256',customerLookupKey).update('operator:' + role + ':' + login).digest('hex').slice(0,40);
+  return { login,operatorId,role };
+}
+
 function profileFields(input) {
   const name = typeof input?.name === 'string' ? input.name.trim() : '';
   let phone = typeof input?.phone === 'string' ? input.phone.replace(/\D/g,'') : '';
@@ -246,7 +256,19 @@ async function api(req, res, url) {
       setSession(req,res,data);
       return json(res,200,{ signedIn:true });
     }
-    const email = typeof input?.email === 'string' ? input.email.trim() : '';
+    const operatorRole = sessionCookie === 'fd_loja_access' ? 'merchant' :
+      sessionCookie === 'fd_entregador_access' ? 'courier' : null;
+    if (operatorRole && typeof input?.login === 'string' && !input.login.includes('@')) {
+      const identity = operatorIdentity(input.login,operatorRole);
+      const data = await upstream('/functions/v1/fd-onboarding',{
+        token:adminBridge,body:{ action:'operator_login',input:{ ...identity,password:input.password } }
+      });
+      if (!data?.access_token) throw new HttpError(502,'Não foi possível iniciar a sessão.');
+      setSession(req,res,data);
+      return json(res,200,{ signedIn:true });
+    }
+    const credential = operatorRole ? (input?.login ?? input?.email) : input?.email;
+    const email = typeof credential === 'string' ? credential.trim() : '';
     const password = input?.password;
     if (!email.includes('@') || email.length > 254 || typeof password !== 'string' || password.length < 8 || password.length > 128) {
       throw new HttpError(400, 'Informe um e-mail válido e uma senha de 8 a 128 caracteres.');
@@ -270,15 +292,19 @@ async function api(req, res, url) {
     setSession(req, res, tokens);
     return json(res, 200, {});
   }
-  if (url.pathname === '/api/provision' || url.pathname === '/api/activate') {
+  if (url.pathname === '/api/provision' || url.pathname === '/api/activate' || url.pathname === '/api/change-password') {
     const provision = url.pathname === '/api/provision';
-    if (provision && !access) throw new HttpError(401, 'Entre para continuar.');
+    const change = url.pathname === '/api/change-password';
+    if (provision && (sessionCookie !== 'fd_admin_access' || !access)) throw new HttpError(401,'Entre na administração para continuar.');
+    if (change && (sessionCookie !== 'fd_loja_access' || !access)) throw new HttpError(401,'Entre no estabelecimento para continuar.');
     const input = await readJson(req);
-    const data = await upstream('/functions/v1/fd-onboarding', {
-      token:provision ? access : undefined,
-      body:{ action:provision ? 'provision' : 'activate', input }
+    const payload = provision ? { ...input,...operatorIdentity(input?.login,input?.kind === 'store' ? 'merchant' : 'courier') } : input;
+    const data = await upstream('/functions/v1/fd-onboarding',{
+      token:provision || change ? access : undefined,
+      body:{ action:provision ? 'provision' : change ? 'operator_change_password' : 'activate',input:payload }
     });
-    return json(res, 200, data);
+    if (change) setSession(req,res,null);
+    return json(res,200,data);
   }
   if (url.pathname === '/api/command') {
     if (!access) throw new HttpError(401, 'Entre para continuar.');

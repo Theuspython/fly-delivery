@@ -34,16 +34,22 @@ async function rpc(name: string, body: unknown, token: string) {
   throw new Failure(502,'O cadastro não pôde ser concluído. Tente novamente.');
 }
 
-function validStore(input: Record<string,unknown>) {
-  const { name,address,lat,lng,category,description,fee,delivery_radius:radius,eta } = input;
-  return typeof name === 'string' && name.trim().length >= 2 && name.trim().length <= 80 &&
-    typeof address === 'string' && address.trim().length >= 5 && address.trim().length <= 240 &&
-    typeof lat === 'number' && lat >= -90 && lat <= 90 && typeof lng === 'number' && lng >= -180 && lng <= 180 &&
-    ['Hambúrguer','Pizza','Japonesa','Brasileira','Açaí','Outros'].includes(String(category)) &&
-    typeof description === 'string' && description.trim().length <= 260 &&
-    Number.isInteger(fee) && Number(fee) >= 0 && Number(fee) <= 100000 &&
-    Number.isInteger(radius) && Number(radius) >= 1 && Number(radius) <= 50 &&
-    Number.isInteger(eta) && Number(eta) >= 5 && Number(eta) <= 180;
+const categories = new Set(['Hambúrguer','Pizza','Japonesa','Brasileira','Açaí','Outros']);
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const validPassword = (value: unknown): value is string =>
+  typeof value === 'string' && value.length >= 8 && new TextEncoder().encode(value).length <= 72;
+
+function operatorEmail(input: Record<string,unknown>) {
+  const { login,operatorId,role } = input;
+  if (typeof login !== 'string' || !/^[a-z0-9][a-z0-9._-]{2,39}$/.test(login) ||
+      typeof operatorId !== 'string' || !/^[a-f0-9]{40}$/.test(operatorId) || (role !== 'merchant' && role !== 'courier')) {
+    throw new Failure(400,'Confira o login.');
+  }
+  return 'fd-' + (role === 'merchant' ? 'm' : 'd') + '-' + operatorId + '@fly-delivery-piloto.up.railway.app';
+}
+
+function signIn(email: string,password: string) {
+  return call('/auth/v1/token?grant_type=password',{ body:{ email,password } });
 }
 
 async function provision(request: Request, input: Record<string,unknown>) {
@@ -52,44 +58,76 @@ async function provision(request: Request, input: Record<string,unknown>) {
   const identity = await call('/auth/v1/user',{ method:'GET',token });
   if (!identity.response.ok) throw new Failure(401,'Entre novamente para continuar.');
   const admin = await rpc('fd_api',{ action:'session',input:{} },token);
-  if (admin?.role !== 'admin' || admin.id !== identity.data?.id) {
-    throw new Failure(403,'Acesso restrito à administração.');
-  }
-  const store = input.kind === 'store';
-  if (!store && input.kind !== 'courier') throw new Failure(400,'Tipo de cadastro inválido.');
-  const email = String(store ? input.owner_email ?? '' : input.email ?? '').trim().toLowerCase();
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || (store && !validStore(input))) {
-    throw new Failure(400,'Confira os dados do cadastro.');
-  }
+  if (admin?.role !== 'admin' || admin.id !== identity.data?.id) throw new Failure(403,'Acesso restrito à administração.');
 
-  const findTarget = () => rpc('fd_registration_target',{ email_address:email },token);
-  let target = await findTarget();
-  if (!target) {
-    const result = await call('/auth/v1/admin/users',{ admin:true,body:{
-      email,password:'Fd!7' + crypto.randomUUID() + crypto.randomUUID().slice(0,16),email_confirm:true,
-      app_metadata:{ fly_delivery_setup:true }
-    } });
-    if (result.response.ok) target = { confirmed:true,setup:true };
-    else if (['email_exists','user_already_exists'].includes(result.data?.error_code ?? result.data?.code)) {
-      target = await findTarget();
+  const { kind,role,login,password,request_id,store_id } = input;
+  const email = operatorEmail(input);
+  if ((kind !== 'store' && kind !== 'courier') || role !== (kind === 'store' ? 'merchant' : 'courier') ||
+      typeof request_id !== 'string' || !uuid.test(request_id) || !validPassword(password)) {
+    throw new Failure(400,'Confira o login e a senha, que deve ter pelo menos 8 caracteres.');
+  }
+  if (kind === 'store' && (store_id ? typeof store_id !== 'string' || !uuid.test(store_id) :
+      typeof input.name !== 'string' || input.name.trim().length < 2 || input.name.trim().length > 80 ||
+      !Array.isArray(input.categories) || !input.categories.length || input.categories.length > categories.size ||
+      input.categories.some(category => !categories.has(String(category))))) {
+    throw new Failure(400,'Confira o nome e as categorias do estabelecimento.');
+  }
+  const operator = { role,login,request_id };
+  const created = await call('/auth/v1/admin/users',{ admin:true,body:{
+    email,password,email_confirm:true,app_metadata:{ fly_delivery_operator:operator }
+  } });
+  let user = created.data;
+  if (!created.response.ok) {
+    const code = created.data?.error_code ?? created.data?.code;
+    if (['email_exists','user_already_exists'].includes(code)) {
+      const existing = await signIn(email,password);
+      if (!existing.response.ok) throw new Failure(409,'Este login já está em uso.');
+      user = existing.data?.user;
+    } else if (code === 'weak_password') {
+      throw new Failure(400,'Escolha uma senha mais forte.');
     } else throw new Failure(502,'Não foi possível criar o acesso. Tente novamente.');
   }
-  if (!target?.confirmed) throw new Failure(409,'Esta conta já existe. Peça que o responsável confirme o e-mail antes de vinculá-la.');
+  if (!user?.id || user.app_metadata?.fly_delivery_operator?.login !== login ||
+      user.app_metadata?.fly_delivery_operator?.role !== role) throw new Failure(409,'Este login já está em uso.');
+  return rpc('fd_api',{ action:'assign_operator',input:{ role,login,request_id,store_id,
+    user_id:user.id,name:input.name,categories:input.categories } },token);
+}
 
-  const saved = await rpc('fd_api',store
-    ? { action:input.id ? 'save_store' : 'register_store',input:{ ...input,owner_email:email } }
-    : { action:'set_courier',input:{ email,enabled:true } },token);
-  if (!target.setup) return { ...saved,activationToken:null };
-
-  try {
-    const link = await call('/auth/v1/admin/generate_link',{ admin:true,body:{ type:'recovery',email } });
-    if (link.response.ok && typeof link.data?.hashed_token === 'string') {
-      return { ...saved,activationToken:link.data.hashed_token };
-    }
-  } catch (error) {
-    console.error('Fly Delivery activation link',error instanceof Error ? error.name : 'error');
+async function operatorLogin(request: Request,input: Record<string,unknown>) {
+  await requireRailway(request);
+  const email = operatorEmail(input);
+  if (!validPassword(input.password)) throw new Failure(400,'Confira o login e a senha.');
+  const result = await signIn(email,input.password);
+  if (result.response.status === 429) throw new Failure(429,'Muitas tentativas. Aguarde e tente de novo.');
+  if (!result.response.ok || !result.data?.access_token || result.data.user?.app_metadata?.fly_delivery_operator?.role !== input.role) {
+    throw new Failure(400,'Login ou senha incorretos.');
   }
-  return { ...saved,activationToken:null,activationPending:true };
+  const profile = await rpc('fd_api',{ action:'session',input:{} },result.data.access_token);
+  if (profile?.role !== input.role) throw new Failure(403,'Este acesso ainda precisa ser habilitado pela administração.');
+  const { access_token,refresh_token,expires_in } = result.data;
+  return { access_token,refresh_token,expires_in };
+}
+
+async function operatorChangePassword(request: Request,input: Record<string,unknown>) {
+  const token = request.headers.get('Authorization')?.match(/^Bearer (.+)$/i)?.[1];
+  if (!token) throw new Failure(401,'Entre para continuar.');
+  const { current_password,password,confirmation } = input;
+  if (!validPassword(current_password) || !validPassword(password) || password !== confirmation || current_password === password) {
+    throw new Failure(400,'Informe a senha atual e confirme uma nova senha diferente, com pelo menos 8 caracteres.');
+  }
+  const identity = await call('/auth/v1/user',{ method:'GET',token });
+  if (!identity.response.ok) throw new Failure(401,'Entre novamente para continuar.');
+  const user = identity.data;
+  const profile = await rpc('fd_api',{ action:'session',input:{} },token);
+  if (profile?.id !== user?.id || profile?.role !== 'merchant' || user?.app_metadata?.fly_delivery_operator?.role !== 'merchant') {
+    throw new Failure(403,'A alteração de senha está disponível para o login do estabelecimento.');
+  }
+  const verified = await signIn(user.email,current_password);
+  if (!verified.response.ok || verified.data?.user?.id !== user.id) throw new Failure(400,'A senha atual está incorreta.');
+  const updated = await call('/auth/v1/admin/users/' + user.id,{ method:'PUT',admin:true,body:{ password } });
+  if (!updated.response.ok) throw new Failure(400,'Não foi possível alterar a senha. Escolha uma senha mais forte.');
+  await call('/auth/v1/logout?scope=global',{ token:verified.data.access_token }).catch(() => {});
+  return { ok:true };
 }
 
 async function activate(input: Record<string,unknown>) {
@@ -214,9 +252,11 @@ Deno.serve(async request => {
     if (raw.length > 16384) throw new Failure(413,'Dados do cadastro muito grandes.');
     const { action,input } = JSON.parse(raw) ?? {};
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Failure(400,'Dados inválidos.');
-    if (!['provision','activate','admin_login','customer_register','customer_login'].includes(action)) throw new Failure(400,'Ação inválida.');
+    if (!['provision','activate','admin_login','customer_register','customer_login','operator_login','operator_change_password'].includes(action)) throw new Failure(400,'Ação inválida.');
     const result = action === 'provision' ? await provision(request,input) :
       action === 'activate' ? await activate(input) : action === 'admin_login' ? await adminLogin(request) :
+      action === 'operator_login' ? await operatorLogin(request,input) :
+      action === 'operator_change_password' ? await operatorChangePassword(request,input) :
       await customerAuth(request,input,action === 'customer_register');
     return new Response(JSON.stringify(result),{ headers });
   } catch (error) {

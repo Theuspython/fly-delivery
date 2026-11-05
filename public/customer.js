@@ -8,6 +8,8 @@ function stored(key, fallback) {
 }
 const normalize = value => value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
 const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
+const storeCategories = store => store.categories ?? [store.category];
+const storePhoto = store => store.image || imageFor(store,store.products.find(product => product.image));
 const validPoint = point => point && Number.isFinite(point.lat) && Number.isFinite(point.lng);
 
 export function customer(context) {
@@ -71,8 +73,8 @@ export function customer(context) {
 
   function storeCard(store, index) {
     return '<a class="restaurant-card" href="#loja/' + esc(store.id) + '"><div class="restaurant-photo"><img src="' +
-      esc(imageFor(store, store.products.find(product => product.image))) + '" alt="" loading="' + (index === 0 ? 'eager' : 'lazy') +
-      '"><span class="photo-tag">' + esc(store.category) + '</span>' + (!store.is_open ? '<span class="closed-tag">Fechado</span>' : '') +
+      esc(storePhoto(store)) + '" alt="" loading="' + (index === 0 ? 'eager' : 'lazy') +
+      '"><span class="photo-tag">' + esc(storeCategories(store).join(' · ')) + '</span>' + (!store.is_open ? '<span class="closed-tag">Fechado</span>' : '') +
       '</div><div class="restaurant-content"><div><h3>' + esc(store.name) + '</h3><span class="restaurant-arrow">' + icon('arrow') +
       '</span></div><p>' + esc(store.description) + '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta +
       ' min</span><span>' + icon('bike') + ' ' + (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></a>';
@@ -82,8 +84,8 @@ export function customer(context) {
     const results = $('#results');
     const count = $('#results-count');
     if (!results) return;
-    const matches = stores.filter(store => (category === 'Todas' || store.category === category) &&
-      normalize([store.name,store.category,...store.products.map(p => p.name)].join(' ')).includes(normalize(search.trim())));
+    const matches = stores.filter(store => (category === 'Todas' || storeCategories(store).includes(category)) &&
+      normalize([store.name,...storeCategories(store),...store.products.map(p => p.name)].join(' ')).includes(normalize(search.trim())));
     count.textContent = loaded ? matches.length + (matches.length === 1 ? ' estabelecimento' : ' estabelecimentos') : '';
     if (error) {
       results.innerHTML = empty('Catálogo indisponível', error, 'store') + '<button class="btn outline" id="retry">Tentar novamente</button>';
@@ -122,8 +124,8 @@ export function customer(context) {
 
   function storeView(store) {
     main.innerHTML = '<div class="wrap page"><a class="back-link" href="#lojas">' + icon('back') + ' Restaurantes</a>' +
-      '<section class="store-banner"><img src="' + esc(imageFor(store, store.products.find(product => product.image))) +
-      '" alt=""><div><span class="photo-tag">' + esc(store.category) + '</span><h1>' + esc(store.name) + '</h1><p>' + esc(store.description) +
+      '<section class="store-banner"><img src="' + esc(storePhoto(store)) +
+      '" alt=""><div><span class="photo-tag">' + esc(storeCategories(store).join(' · ')) + '</span><h1>' + esc(store.name) + '</h1><p>' + esc(store.description) +
       '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta + ' min</span><span>' + icon('bike') + ' ' +
       (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></section>' +
       (!store.is_open ? '<p class="pilot-label">Esta loja está fechada.</p>' : '') +

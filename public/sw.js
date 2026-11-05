@@ -1,4 +1,4 @@
-const cacheName = 'fly-delivery-shell-v5';
+const cacheName = 'fly-delivery-shell-v6';
 const shell = ['/styles.css', '/app.js', '/shared.js', '/google-map.js', '/customer.js', '/operations.js', '/assets/icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)));

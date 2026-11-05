@@ -62,7 +62,6 @@ function formatCustomerFields(form) {
   });
 }
 
-const emailInput = '<label>E-mail<input name="email" type="email" autocomplete="email" required maxlength="254"></label>';
 const passwordInput = mode => '<label>Senha<input name="password" type="password" autocomplete="' + mode +
   '" required minlength="8" maxlength="128"></label>';
 const formError = '<p class="form-error" data-form-error role="alert"></p>';
@@ -70,13 +69,13 @@ const formError = '<p class="form-error" data-form-error role="alert"></p>';
 function auth() {
   if (page === 'cliente') return customerAuth('login');
   const admin = page === 'admin';
-  const loginField = admin ? '<label>Login<input name="login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required></label>' : emailInput;
+  const loginField = '<label>Login<input name="login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required></label>';
   const secretField = admin ? '<label>Senha<input name="password" type="password" autocomplete="current-password" required></label>' :
     passwordInput('current-password');
   const el = modal(admin ? 'Acesso administrativo' : 'Entre no Fly Delivery',
     '<form class="form-stack" id="auth-form">' + loginField + secretField + formError +
     '<button class="btn primary wide" type="submit">Entrar</button></form>',
-    admin ? 'Use o login e a senha configurados no Railway.' : 'Use o e-mail e a senha da sua conta.');
+    admin ? 'Use o login e a senha configurados no Railway.' : 'Use o login e a senha fornecidos pela administração.');
   bindSubmit($('#auth-form',el), async fields => {
     await api('login',Object.fromEntries(fields));
     await loadSession();
@@ -134,9 +133,30 @@ function renderApp() {
   app.render();
 }
 
+function changePassword() {
+  const el = modal('Alterar senha','<form class="form-stack" id="change-password">' +
+    '<label>Senha atual<input name="current_password" type="password" autocomplete="current-password" required></label>' +
+    '<label>Nova senha<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>' +
+    '<label>Confirme a nova senha<input name="confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>' +
+    formError + '<button class="btn primary wide" type="submit">Salvar nova senha</button></form>');
+  bindSubmit($('#change-password',el),async fields => {
+    if (fields.get('password') !== fields.get('confirmation')) throw new Error('As senhas precisam ser iguais.');
+    await api('change-password',Object.fromEntries(fields));
+    current = null;
+    el.close();
+    renderApp();
+    toast('Senha alterada. Entre com a nova senha.');
+  });
+}
+
 function account() {
-  const el = modal('Minha conta','<p class="dialog-copy">' + esc(page === 'cliente' && profile ? profile.name : page === 'admin' ? 'Administrador' : current.email) + '</p>' +
-    '<button class="btn outline" data-logout>Sair</button>');
+  const canChangePassword = page === 'loja' && current.role === 'merchant' && current.operator_login;
+  const name = page === 'cliente' && profile ? profile.name : page === 'admin' ? 'Administrador' :
+    current.operator_login || current.email;
+  const el = modal('Minha conta','<p class="dialog-copy">' + esc(name) + '</p><div class="order-actions">' +
+    (canChangePassword ? '<button class="btn primary" data-change-password>Alterar senha</button>' : '') +
+    '<button class="btn outline" data-logout>Sair</button></div>');
+  if (canChangePassword) $('[data-change-password]',el).onclick = changePassword;
   $('[data-logout]',el).onclick = async () => {
     try {
       if (current.role === 'courier') await command('presence', { online:false }).catch(() => {});
@@ -163,7 +183,7 @@ function openActivation() {
   bindSubmit($('#activation-form',el),async data => {
     if (data.get('password') !== data.get('confirmation')) throw new Error('As senhas precisam ser iguais.');
     await api('activate',{ token,password:data.get('password') });
-    modal('Acesso ativado','<p class="dialog-copy">Entre com o seu e-mail e a senha que você acabou de criar.</p>' +
+    modal('Acesso ativado','<p class="dialog-copy">Entre com o identificador do seu acesso anterior e a senha que você acabou de criar.</p>' +
       '<button class="btn primary" data-activation-login>Entrar</button>');
     $('[data-activation-login]').onclick = () => auth();
   });

@@ -17,6 +17,9 @@ declare
   result jsonb;
   order_input jsonb;
   actor_id uuid;
+  shop fly_delivery.stores;
+  photo text;
+  schedule jsonb := (select jsonb_agg(jsonb_build_object('open','00:00','close','00:00')) from generate_series(1,7));
 begin
   foreach actor_id in array array[admin_id,merchant_id,buyer_id,courier1,courier2,foreign_buyer] loop
     insert into auth.users(id,email,email_confirmed_at)
@@ -24,19 +27,41 @@ begin
   end loop;
   insert into fly_delivery.accounts (id,role) values(admin_id,'admin');
   perform set_config('request.jwt.claim.sub',admin_id::text,true);
-  if public.fd_registration_target(merchant_id::text || '@example.invalid')->>'confirmed' <> 'true' then
-    raise exception 'Registration lookup did not find the confirmed account';
-  end if;
-  registration := jsonb_build_object('owner_email',merchant_id::text || '@example.invalid','request_id',registration_id,
-    'name','Fixture Store','category','Pizza','active',true,'address','Rua Teste 123','lat',-19.9,'lng',-43.9,'fee',650,'delivery_radius',8,'eta',25);
-  result := public.fd_api('register_store',registration);
+  update auth.users set raw_app_meta_data=jsonb_build_object('fly_delivery_operator',
+    jsonb_build_object('role','merchant','login','fixture-shop')) where id=merchant_id;
+  update auth.users set raw_app_meta_data=jsonb_build_object('fly_delivery_operator',
+    jsonb_build_object('role','courier','login',id::text)) where id in (courier1,courier2);
+  registration := jsonb_build_object('user_id',merchant_id,'role','merchant','login','fixture-shop',
+    'request_id',registration_id,'name','Fixture Store','categories',array['Pizza','Brasileira']);
+  result := public.fd_api('assign_operator',registration);
   store_id := (result->>'id')::uuid;
-  if public.fd_api('register_store',registration)->>'id' <> store_id::text then raise exception 'Duplicate registration retry'; end if;
-  perform public.fd_api('set_courier',jsonb_build_object('email',courier1::text || '@example.invalid','enabled',true));
-  perform public.fd_api('set_courier',jsonb_build_object('email',courier2::text || '@example.invalid','enabled',true));
+  if public.fd_api('assign_operator',registration)->>'id' <> store_id::text then raise exception 'Duplicate registration retry'; end if;
+  if (select active from fly_delivery.stores where id=store_id) then raise exception 'Draft store was published'; end if;
+  foreach actor_id in array array[courier1,courier2] loop
+    perform public.fd_api('assign_operator',jsonb_build_object('user_id',actor_id,'role','courier',
+      'login',actor_id::text,'request_id',gen_random_uuid()));
+  end loop;
+  begin
+    perform public.fd_api('save_product',jsonb_build_object('store_id',store_id,'name','Admin Product','price',1990));
+    raise exception 'Admin can create products';
+  exception when raise_exception then
+    if sqlerrm not like 'FD: Operação exclusiva%' then raise; end if;
+  end;
 
   perform set_config('request.jwt.claim.sub',merchant_id::text,true);
-  perform public.fd_api('set_open',jsonb_build_object('store_id',store_id,'open',true));
+  photo := 'https://fixture.supabase.co/storage/v1/object/public/fly-delivery-menu/' || store_id || '/' || gen_random_uuid() || '.webp';
+  perform public.fd_api('save_store_profile',jsonb_build_object('id',store_id,'active',true,'address','Rua Teste 123',
+    'lat',-19.9,'lng',-43.9,'fee',650,'delivery_radius',8,'eta',25,'weekly_hours',schedule,'image',photo));
+  select * into shop from fly_delivery.stores where id=store_id;
+  shop.weekly_hours := '[null,{"open":"20:00","close":"02:00"},null,null,null,null,null]';
+  if not fly_delivery.store_open_at(shop,'2026-11-10 01:00-03'::timestamptz)
+    or fly_delivery.store_open_at(shop,'2026-11-10 02:00-03'::timestamptz) then
+    raise exception 'Overnight hours incorrect';
+  end if;
+  if not exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) item
+    where item->>'id'=store_id::text and item->>'image'=photo and item->'categories' @> '["Pizza","Brasileira"]'::jsonb) then
+    raise exception 'Store cover or categories not visible';
+  end if;
   result := public.fd_api('save_product',jsonb_build_object('store_id',store_id,'name','Pizza Teste','price',1990,'active',true));
   product_id := (result->>'id')::uuid;
   if not fly_delivery.can_upload(store_id::text || '/' || gen_random_uuid() || '.webp') then raise exception 'Merchant cannot upload'; end if;
@@ -67,8 +92,8 @@ begin
   perform set_config('request.jwt.claim.sub',foreign_buyer::text,true);
   perform public.fd_api('session');
   begin
-    perform public.fd_registration_target(merchant_id::text || '@example.invalid');
-    raise exception 'Customer can look up Auth accounts';
+    perform public.fd_api('assign_operator',registration);
+    raise exception 'Customer can create operator accounts';
   exception when raise_exception then
     if sqlerrm not like 'FD: Acesso restrito%' then raise; end if;
   end;
@@ -114,5 +139,5 @@ begin
   if result->>'status' <> 'delivered' or result->'items'->0->>'name' <> 'Pizza Teste' or
     jsonb_array_length(result->'events') <> 6 then raise exception 'Delivery history was not preserved'; end if;
 end $$;
-select 'Fly Delivery: cadastro, checkout, acesso, sinal de status, aceite exclusivo e entrega verificados' as integration;
+select 'Fly Delivery: cadastro, horários, foto, categorias, checkout, acesso, sinal de status, aceite exclusivo e entrega verificados' as integration;
 rollback;

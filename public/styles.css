@@ -265,3 +265,10 @@ p { line-height:1.5 }
 
 .order-shortcut { display:inline-flex; align-items:center; min-height:42px; padding:0 8px; color:var(--ink); font-size:.89rem; font-weight:800; }
 .order-shortcut:hover { color:var(--orange); }
+
+.operator-categories,.operator-hours { border:1px solid var(--line); border-radius:10px; padding:10px; display:grid; gap:8px; }
+.operator-categories { grid-template-columns:repeat(auto-fit,minmax(115px,1fr)); }
+.operator-categories legend,.operator-hours legend { font-size:.88rem; font-weight:800; padding:0 4px; }
+.operator-day { display:grid; align-items:center; gap:6px; grid-template-columns:minmax(84px,1fr) minmax(68px,1fr) minmax(68px,1fr); }
+.operator-day input[type=time] { min-width:0; }
+.operator-day input:disabled { opacity:.55; }

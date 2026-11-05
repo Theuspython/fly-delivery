@@ -5,57 +5,99 @@ import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit, geo,
 const profiles = {
   loja:{ role:'merchant', title:'Painel da loja', label:'ESTABELECIMENTO', symbol:'store', intro:'Organize seu cardápio e acompanhe o preparo dos pedidos.' },
   entregador:{ role:'courier', title:'Entregas', label:'ENTREGADOR', symbol:'bike', intro:'Fique disponível para receber entregas próximas e acompanhe sua próxima retirada.' },
-  admin:{ role:'admin', title:'Administração', label:'GESTÃO FLY DELIVERY', symbol:'shield', intro:'Cadastre lojas, habilite entregadores e acompanhe a operação.' }
+  admin:{ role:'admin', title:'Administração', label:'GESTÃO FLY DELIVERY', symbol:'shield', intro:'Cadastre estabelecimentos e crie acessos para lojas e entregadores.' }
 };
 const mapsLink = (lat, lng, label) => '<a class="btn outline" href="https://www.google.com/maps/dir/?api=1&amp;destination=' +
   encodeURIComponent(lat + ',' + lng) + '" target="_blank" rel="noopener noreferrer">' + icon('pin') + ' ' + esc(label) + '</a>';
 const formEnd = label => '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">' + esc(label) + '</button>';
 
-function showRegistration(result, page, message) {
-  if (!result.activationToken) {
-    toast(result.activationPending ? 'Cadastro salvo. Edite o cadastro para tentar gerar o link novamente.' : message);
-    return;
-  }
-  const url = location.origin + '/' + page + '/#ativar=' + encodeURIComponent(result.activationToken);
-  const el = modal('Link de ativação',
-    '<div class="form-stack"><label>Link individual<input id="activation-link" readonly value="' + esc(url) +
-    '"></label><button class="btn primary" data-copy-link>Copiar link</button></div>',
-    message + ' Compartilhe este link em particular com o titular da conta para que ele defina a senha.');
-  $('[data-copy-link]',el).onclick = async () => {
-    const field = $('#activation-link',el);
-    field.select();
+const weekdays = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+
+function showCredentials(page,login,password) {
+  const url = location.origin + '/' + page + '/';
+  const el = modal('Acesso criado',
+    '<div class="form-stack"><label>Login<input readonly value="' + esc(login) +
+    '"></label><label>Senha inicial<input readonly id="operator-secret" value="' + esc(password) +
+    '"></label><a class="text-button" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">Abrir aplicativo</a>' +
+    '<button class="btn primary" data-copy-access>Copiar acesso</button></div>',
+    'Entregue estes dados em particular ao titular da conta.');
+  const field = $('#operator-secret',el);
+  const erase = () => {
+    if (el.open && field.isConnected) return;
+    field.value = '';
+    el.removeEventListener('close',erase);
+  };
+  el.addEventListener('close',erase);
+  $('[data-copy-access]',el).onclick = async () => {
     try {
-      await navigator.clipboard.writeText(url);
-      toast('Link copiado.');
-    } catch {
-      toast('Selecione e copie o link exibido.');
-    }
+      await navigator.clipboard.writeText([url,'Login: ' + login,'Senha: ' + field.value].join('\n'));
+      toast('Acesso copiado.');
+    } catch { toast('Copie os dados exibidos.'); }
   };
 }
 
-function storeForm(store, done) {
+function registrationForm(kind,done,legacyStore) {
   const requestId = crypto.randomUUID();
-  let selected = store ? { lat:store.lat, lng:store.lng } : null;
+  const store = kind === 'store';
+  const title = legacyStore ? 'Criar acesso para ' + legacyStore.name : store ? 'Cadastrar estabelecimento' : 'Cadastrar entregador';
+  const el = modal(title,'<form class="form-stack" id="operator-form">' +
+    (store && !legacyStore ? '<label>Nome do estabelecimento<input name="name" required minlength="2" maxlength="80"></label>' +
+      '<fieldset class="operator-categories"><legend>Categorias</legend>' + categories.slice(1).map(([name]) =>
+      '<label class="check"><input type="checkbox" name="category" value="' + esc(name) + '"> ' + esc(name) + '</label>').join('') +
+      '</fieldset>' : '') +
+    '<label>Login<input name="login" autocomplete="off" autocapitalize="none" spellcheck="false" minlength="3" maxlength="40" required></label>' +
+    '<label>Senha inicial<input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>' +
+    formEnd('Criar acesso') + '</form>');
+  bindSubmit($('#operator-form',el),async fields => {
+    const input = Object.fromEntries(fields);
+    if (store && !legacyStore && !fields.getAll('category').length) throw new Error('Selecione pelo menos uma categoria.');
+    await api('provision',{ kind,request_id:requestId,store_id:legacyStore?.id,
+      name:input.name,categories:fields.getAll('category'),login:input.login,password:input.password });
+    el.close();
+    showCredentials(store ? 'loja' : 'entregador',input.login.trim().toLowerCase(),input.password);
+    await done();
+  });
+}
+
+function storeSettings(store,done) {
+  let selected = Number.isFinite(store.lat) && Number.isFinite(store.lng) ? { lat:store.lat,lng:store.lng } : null;
   let map;
-  const el = modal(store ? 'Editar estabelecimento' : 'Cadastrar estabelecimento',
-    '<form class="form-stack" id="store-form"><div class="fields-two"><label>Nome da loja<input name="name" required minlength="2" maxlength="80" value="' +
-    esc(store?.name) + '"></label><label>Categoria<select name="category">' + categories.slice(1).map(([name]) =>
-      '<option' + (name === store?.category ? ' selected' : '') + '>' + esc(name) + '</option>').join('') + '</select></label></div>' +
-    '<label>E-mail do responsável<input name="owner_email" type="email" required maxlength="254" value="' + esc(store?.owner_email) +
-    '" placeholder="E-mail usado para acessar a loja"></label><label>Descrição<textarea name="description" rows="2" maxlength="260">' +
-    esc(store?.description) + '</textarea></label><label>Endereço de retirada<input name="address" required minlength="5" maxlength="240" value="' +
-    esc(store?.address) + '"></label><div class="fields-three"><label>Taxa (R$)<input name="fee" type="number" step="0.01" min="0" max="1000" required value="' +
-    (store ? store.fee / 100 : '5.90') + '"></label><label>Raio (km)<input name="delivery_radius" type="number" min="1" max="50" required value="' +
-    (store?.delivery_radius ?? 8) + '"></label><label>Prazo (min)<input name="eta" type="number" min="5" max="180" required value="' +
-    (store?.eta ?? 30) + '"></label></div><p class="map-help">Marque o ponto de retirada no mapa.</p><div class="map" id="store-map"></div>' +
+  let image = store.image;
+  let uploadedFile;
+  const el = modal('Configurar estabelecimento',
+    '<form class="form-stack" id="store-form"><label>Foto ou logo da loja<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
+    (image ? '<label class="check"><input name="remove_photo" type="checkbox"> Remover foto atual</label>' : '') +
+    '<p class="muted">JPG, PNG ou WebP, até 3 MB.</p><label>Descrição da loja<textarea name="description" rows="2" maxlength="260">' +
+    esc(store.description) + '</textarea></label><fieldset class="operator-hours"><legend>Horário de funcionamento</legend>' +
+    weekdays.map((day,index) => {
+      const hours = store.weekly_hours?.[index];
+      const enabled = Boolean(hours);
+      return '<div class="operator-day"><label class="check"><input type="checkbox" name="day-' + index + '"' +
+        (enabled ? ' checked' : '') + '> ' + day + '</label><input aria-label="Abertura de ' + day +
+        '" type="time" name="open-' + index + '" value="' + esc(hours?.open ?? '09:00') + '"' + (enabled ? '' : ' disabled') +
+        '><input aria-label="Fechamento de ' + day + '" type="time" name="close-' + index + '" value="' +
+        esc(hours?.close ?? '18:00') + '"' + (enabled ? '' : ' disabled') + '></div>';
+    }).join('') + '<p class="muted">Selecione os dias abertos. O horário é de Brasília. Para 24 horas, use 00:00 nos dois campos.</p></fieldset>' +
+    '<label>Endereço de retirada<input name="address" required minlength="5" maxlength="240" value="' +
+    esc(store.address) + '"></label><div class="fields-three"><label>Taxa (R$)<input name="fee" type="number" step="0.01" min="0" max="1000" required value="' +
+    store.fee / 100 + '"></label><label>Raio (km)<input name="delivery_radius" type="number" min="1" max="50" required value="' +
+    store.delivery_radius + '"></label><label>Prazo (min)<input name="eta" type="number" min="5" max="180" required value="' +
+    store.eta + '"></label></div><p class="map-help">Marque o ponto de retirada no mapa.</p><div class="map" id="store-map"></div>' +
     '<div class="map-actions"><button class="btn outline" type="button" data-gps>' + icon('location') +
     ' Usar GPS</button><span class="muted" id="store-point">Aguardando localização</span></div>' +
     '<details class="map-coordinates"><summary>Informar coordenadas</summary><div class="fields-two">' +
     '<label>Latitude<input id="store-lat" inputmode="decimal" placeholder="-19.9235"></label>' +
     '<label>Longitude<input id="store-lng" inputmode="decimal" placeholder="-43.9381"></label></div>' +
     '<button class="btn outline" type="button" data-set-coordinates>Usar coordenadas</button></details>' +
-    '<label class="check"><input name="active" type="checkbox"' +
-    (store?.active ? ' checked' : '') + '> Publicar no catálogo</label>' + formEnd('Salvar estabelecimento') + '</form>');
+    '<label class="check"><input name="active" type="checkbox"' + (store.active || !store.address ? ' checked' : '') +
+    '> Publicar no catálogo</label>' + formEnd('Salvar configurações') + '</form>');
+  weekdays.forEach((_,index) => {
+    const check = $('[name="day-' + index + '"]',el);
+    check.onchange = () => {
+      $('[name="open-' + index + '"]',el).disabled = !check.checked;
+      $('[name="close-' + index + '"]',el).disabled = !check.checked;
+    };
+  });
   map = mapPicker($('#store-map',el),selected,undefined,point => {
     selected = point;
     $('#store-point',el).textContent = 'Ponto selecionado';
@@ -80,16 +122,22 @@ function storeForm(store, done) {
     formError.textContent = '';
     map.set({ lat:Number(lat),lng:Number(lng) });
   };
-  bindSubmit($('#store-form',el), async data => {
+  bindSubmit($('#store-form',el),async data => {
     if (!selected) throw new Error('Selecione o ponto de retirada no mapa, use o GPS ou informe as coordenadas.');
-    const fields = Object.fromEntries(data);
-    const result = await api('provision', {
-      ...fields, kind:'store', id:store?.id, request_id:requestId, fee:Math.round(Number(fields.fee)*100),
-      delivery_radius:Number(fields.delivery_radius), eta:Number(fields.eta),
-      active:data.has('active'), lat:selected.lat, lng:selected.lng
+    const file = data.get('photo');
+    if (file?.size && file !== uploadedFile) {
+      if (file.size > 3 * 1024 * 1024) throw new Error('A foto deve ter até 3 MB.');
+      image = (await api('upload?store=' + encodeURIComponent(store.id),file)).url;
+      uploadedFile = file;
+    }
+    await command('save_store_profile',{ id:store.id,address:data.get('address'),description:data.get('description'),
+      fee:Math.round(Number(data.get('fee'))*100),delivery_radius:Number(data.get('delivery_radius')),eta:Number(data.get('eta')),
+      active:data.has('active'),lat:selected.lat,lng:selected.lng,image:data.has('remove_photo') && !file?.size ? null : image,
+      weekly_hours:weekdays.map((_,index) => data.has('day-' + index) ?
+        { open:data.get('open-' + index),close:data.get('close-' + index) } : null)
     });
     el.close();
-    showRegistration(result,'loja','Estabelecimento salvo.');
+    toast('Configurações salvas.');
     await done();
   });
 }
@@ -122,27 +170,21 @@ function productForm(store, product, done) {
   });
 }
 
-function courierForm(done, email = '') {
-  const el = modal('Cadastrar entregador',
-    '<form class="form-stack" id="courier-form"><label>E-mail do entregador<input name="email" type="email" required maxlength="254" value="' +
-    esc(email) + '" placeholder="E-mail usado para acessar o app"></label>' + formEnd('Salvar entregador') + '</form>');
-  bindSubmit($('#courier-form',el), async data => {
-    const result = await api('provision',{ kind:'courier',email:data.get('email') });
-    el.close();
-    showRegistration(result,'entregador','Entregador cadastrado.');
-    await done();
-  });
-}
-
 function storeMarkup(store, role) {
-  const admin = role === 'admin';
-  const actions = '<button class="btn outline" data-open="' + esc(store.id) + '">' + (store.is_open ? 'Fechar para pedidos' : 'Abrir para pedidos') + '</button>' +
-    (admin ? '<button class="btn outline" data-edit-store="' + esc(store.id) + '">Editar loja</button>' : '') +
+  const labels = esc((store.categories ?? [store.category]).join(' · '));
+  if (role === 'admin') {
+    return '<article class="panel management-card"><span class="overline">' + labels + '</span><h3>' + esc(store.name) +
+      '</h3><p>' + (store.owner_login ? 'Login: ' + esc(store.owner_login) : 'Acesso a configurar') + '</p>' +
+      (!store.owner_login ? '<div class="order-actions"><button class="btn outline" data-link-store="' + esc(store.id) +
+        '">Criar login</button></div>' : '') + '</article>';
+  }
+  const actions = '<button class="btn outline" data-settings="' + esc(store.id) + '">Foto e horários</button>' +
+    (store.address ? '<button class="btn outline" data-open="' + esc(store.id) + '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '') +
     '<button class="btn primary" data-add-product="' + esc(store.id) + '">' + icon('plus') + ' Produto</button>';
-  return '<article class="panel management-card"><div class="management-head"><div><span class="overline">' + esc(store.category) +
-    '</span><h3>' + esc(store.name) + '</h3><p>' + esc(store.address) + (admin ? ' · ' + esc(store.owner_email) : '') + '</p></div><span class="status ' +
-    (store.active && store.is_open ? 'status-delivered' : 'status-cancelled') + '">' +
-    (store.active ? store.is_open ? 'Aberta' : 'Fechada' : 'Não publicada') + '</span></div>' +
+  return '<article class="panel management-card"><div class="management-head"><div><span class="overline">' + labels +
+    '</span><h3>' + esc(store.name) + '</h3><p>' + esc(store.address || 'Configure a retirada e os horários para publicar.') + '</p></div><span class="status ' +
+    (store.accepting_now ? 'status-delivered' : 'status-cancelled') + '">' +
+    (store.active ? store.accepting_now ? 'Aberta agora' : 'Fechada agora' : 'Não publicada') + '</span></div>' +
     '<div class="order-actions">' + actions + '</div><div class="menu-admin">' + (store.products.length ? store.products.map(product =>
       '<div class="menu-admin-row">' + (product.image ? '<img src="' + esc(product.image) + '" alt="">' : '<span class="product-placeholder">' + icon('bag') + '</span>') +
       '<div><strong>' + esc(product.name) + '</strong><p>' + money(product.price) + ' · ' + (product.active ? 'Disponível' : 'Pausado') +
@@ -218,7 +260,7 @@ export function operations(page, context) {
         heartbeat = Date.now();
       }
       const [orders, stores, couriers, offers] = await Promise.all([
-        command('orders',{ view:config.role }),
+        page === 'admin' ? Promise.resolve([]) : command('orders',{ view:config.role }),
         page === 'entregador' ? Promise.resolve([]) : command('managed_stores'),
         page === 'admin' ? command('couriers') : Promise.resolve([]),
         page === 'entregador' && online ? command('offers') : Promise.resolve([])
@@ -247,9 +289,7 @@ export function operations(page, context) {
       if (page === 'admin') {
         updateRegion('ops-couriers','<div class="section-head"><h2>Entregadores</h2><button class="btn primary" data-add-courier>' +
           icon('plus') + ' Novo entregador</button></div><div class="panel">' + (couriers.length ? couriers.map(courier =>
-            '<div class="cart-row"><div><strong>' + esc(courier.email) + '</strong><p>' + (courier.online ? 'Disponível' : 'Indisponível') +
-            '</p></div><div class="order-actions"><button class="btn outline" data-edit-courier="' + esc(courier.email) +
-            '">Acesso</button><button class="btn outline" data-disable="' + esc(courier.email) + '">Desabilitar</button></div></div>').join('') :
+            '<div class="cart-row"><strong>' + esc(courier.login || 'Acesso anterior') + '</strong></div>').join('') :
             empty('Nenhum entregador habilitado','Cadastre um entregador para liberar o acesso às ofertas.','bike')) + '</div>',force);
       }
       $('#ops-error').textContent = '';
@@ -307,7 +347,7 @@ export function operations(page, context) {
       (page === 'entregador' ? '<div class="panel presence"><div><h2>Disponibilidade</h2><span id="availability-status" class="status"></span></div>' +
         '<button class="btn primary" data-availability></button></div><section id="ops-offers"></section>' :
         '<section id="ops-stores"></section>' + (page === 'admin' ? '<section id="ops-couriers"></section>' : '')) +
-      '<section id="ops-orders"><p class="muted">Carregando pedidos…</p></section>';
+      (page === 'admin' ? '' : '<section id="ops-orders"><p class="muted">Carregando pedidos…</p></section>');
     if (page === 'entregador') {
       if (!onlineKnown) {
         online = user.online;
@@ -318,24 +358,22 @@ export function operations(page, context) {
       $('[data-availability]').onclick = toggleAvailability;
       bindTransitions($('#ops-offers'),() => refresh(true),() => refresh(true));
     }
-    bindTransitions($('#ops-orders'),() => refresh(true),() => refresh(true));
+    if (page !== 'admin') bindTransitions($('#ops-orders'),() => refresh(true),() => refresh(true));
     const done = () => refresh(true);
     body.addEventListener('click',async event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
-      const { addStore,editStore,addProduct,editProduct,store,open,addCourier,editCourier,disable } = button.dataset;
+      const { addStore,linkStore,settings,addProduct,editProduct,store,open,addCourier } = button.dataset;
       const byId = id => storeList.find(candidate => candidate.id === id);
-      if (addStore !== undefined) storeForm(null,done);
-      if (editStore) storeForm(byId(editStore),done);
+      if (addStore !== undefined || linkStore) registrationForm('store',done,byId(linkStore));
+      if (settings) storeSettings(byId(settings),done);
       if (addProduct) productForm(byId(addProduct),null,done);
       if (editProduct) productForm(byId(store),byId(store).products.find(product => product.id === editProduct),done);
-      if (addCourier !== undefined || editCourier) courierForm(done,editCourier);
-      if (!open && !disable) return;
-      if (disable && !window.confirm('Desabilitar este entregador?')) return;
+      if (addCourier !== undefined) registrationForm('courier',done);
+      if (!open) return;
       button.disabled = true;
       try {
-        if (open) await command('set_open',{ store_id:open, open:!byId(open).is_open });
-        if (disable) await command('set_courier',{ email:disable, enabled:false });
+        await command('set_open',{ store_id:open,open:!byId(open).is_open });
         await done();
       } catch (error) { toast(error.message); }
       finally { button.disabled = false; }
