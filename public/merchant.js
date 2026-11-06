@@ -1,4 +1,4 @@
-import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast } from './shared.js';
+import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast, sortCategories } from './shared.js';
 import { invoicesMarkup, suspensionBanner } from './invoices.js';
 import { productForm, storeSettings, storeMarkup } from './operations.js';
 import { renderLiveMarkup } from './live-markup.js';
@@ -162,7 +162,7 @@ export function merchant(context) {
           currentSection === 'produtos' ? storeMarkup(store,'merchant',true) :
             '<article class="panel merchant-profile">' +
             (store.image ? '<img src="' + esc(store.image) + '" alt="Foto de ' + esc(store.name) + '">' : '') +
-            '<h2>' + esc(store.name) + '</h2><p>' + esc(store.categories.join(' · ')) +
+            '<h2>' + esc(store.name) + '</h2><p>' + esc(sortCategories(store.categories).join(' · ')) +
             '</p><p class="muted">' + esc(store.address || 'Configure o endereço para publicar a loja.') + '</p>' +
             '<div class="order-actions"><button class="btn primary" data-settings="' + esc(store.id) +
             '">Foto, horários e entrega</button>' + (store.address ? '<button class="btn outline" data-open="' + esc(store.id) +

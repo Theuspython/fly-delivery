@@ -14,3 +14,13 @@ test('catalog search matches accents, word order, product details and small typo
  assert.equal(searchCatalog(shops,'Todas','').length,2);
  assert.equal(searchCatalog(shops,'Todas','pizza')[0].store.id,'pizza');
 });
+
+test('open stores come before closed stores in the showcase, categories and scored search',()=>{
+ const stores=[
+  {id:'closed',name:'Pizza',is_open:false,categories:['Pizza'],products:[]},
+  {id:'open',name:'Forno',is_open:true,categories:['Pizza'],products:[{name:'Pizza Margherita'}]}
+ ];
+ for(const query of ['', 'pizza'])for(const category of ['Todas','Pizza'])
+  assert.deepEqual(searchCatalog(stores,category,query).map(match=>match.store.id),['open','closed']);
+ assert.deepEqual(stores.map(store=>store.id),['closed','open']);
+});

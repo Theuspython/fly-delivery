@@ -32,5 +32,5 @@ export function searchCatalog(stores,category,query) {
       return {product,score:score(text,tokens)||(!direct?score(identity+' '+text,tokens):0)};
     }).filter(match=>match.score>0).sort((a,b)=>b.score-a.score);
     return {store,products:products.map(match=>match.product),score:direct?direct+10:Math.max(0,...products.map(match=>match.score))};
-  }).filter(match=>match.score>0).sort((a,b)=>b.score-a.score);
+  }).filter(match=>match.score>0).sort((a,b)=>Number(Boolean(b.store.is_open))-Number(Boolean(a.store.is_open))||b.score-a.score);
 }

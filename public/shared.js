@@ -2,8 +2,8 @@ export const $ = (selector, root = document) => root.querySelector(selector);
 export const main = $('#main');
 export const dialog = $('#dialog');
 export const categories = [
-  ['Todas','grid'], ['Hambúrguer','burger'], ['Pizza','pizza'], ['Marmitex','bowl'],
-  ['Açaí','cup'], ['Telecerveja','beer'], ['Japonesa','sushi'], ['Brasileira','bowl'], ['Outros','spark']
+  ['Todas','grid'], ['Hambúrguer','burger'], ['Pizza','pizza'], ['Marmitex','bowl'], ['Porções','bowl'],
+  ['Açaí','cup'], ['Telecerveja','beer'], ['Japonesa','sushi'], ['Bebidas','cup']
 ];
 export const sortCategories = values => [...values].sort((a,b) => categories.findIndex(([name])=>name===a)-categories.findIndex(([name])=>name===b));
 export const money = value => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(value / 100);
@@ -17,7 +17,7 @@ export const statuses = {
 export const payments = { pix_delivery:'Pix na entrega', card_delivery:'Cartão na entrega', cash_delivery:'Dinheiro na entrega' };
 export const fallbackImages = {
   Hambúrguer:'/assets/burger.webp', Pizza:'/assets/pizza.webp', Japonesa:'/assets/sushi.webp',
-  Brasileira:'/assets/bowl.webp', Açaí:'/assets/bowl.webp', Telecerveja:'/assets/icon.svg?v=motoboy', Marmitex:'/assets/bowl.webp'
+  Porções:'/assets/bowl.webp', Bebidas:'/assets/icon.svg?v=motoboy', Açaí:'/assets/bowl.webp', Telecerveja:'/assets/icon.svg?v=motoboy', Marmitex:'/assets/bowl.webp'
 };
 const icons = {
   pin:'<path d="M20 10c0 5-8 11-8 11s-8-6-8-11a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',

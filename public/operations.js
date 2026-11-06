@@ -2,7 +2,7 @@ import { percentage } from './invoices.js';
 import { createCommissionDashboard } from './admin-dashboard.js';
 import { createMealEditor } from './meal-choices.js';
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
-  categories, empty } from './shared.js';
+  categories, sortCategories, empty } from './shared.js';
 
 const formEnd = label => '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">' + esc(label) + '</button>';
 
@@ -145,7 +145,7 @@ export function storeSettings(store,done) {
 }
 
 export function productForm(store, product, done) {
-  const allowedCategories = store.categories ?? [store.category];
+  const allowedCategories = sortCategories(store.categories ?? [store.category]);
   const selectedCategory = allowedCategories.includes(product?.category) ? product.category : allowedCategories.length === 1 ? allowedCategories[0] : '';
   let photo = product?.image;
   let selectedFile;
@@ -232,7 +232,7 @@ export function productForm(store, product, done) {
 }
 
 export function storeMarkup(store, role, productsOnly = false) {
-  const labels = esc((store.categories ?? [store.category]).join(' · '));
+  const labels = esc(sortCategories(store.categories ?? [store.category]).join(' · '));
   if (role === 'admin') {
     return '<article class="panel management-card"><span class="overline">' + labels + '</span><h3>' + esc(store.name) +
       '</h3>' + (store.suspension?.suspended || store.suspension?.trusted ? '<p class="' + (store.suspension.suspended ? 'management-suspended' : 'management-trusted') + '">' + esc(store.suspension.reason) + '</p>' : '') + '<p>' + (store.owner_login ? 'Login: ' + esc(store.owner_login) : 'Acesso a configurar') + '</p>' +

@@ -41,6 +41,7 @@ export function customer(context) {
   let orderStream;
   let previousView;
   let drawer;
+  let floatingCart;
   let openOrderId = null;
   let stopHistory;
   const route = () => location.hash.slice(1) || 'inicio';
@@ -83,6 +84,26 @@ export function customer(context) {
 
   function updateHeader() {
     $('#cart-count').textContent = Object.values(cart.items).reduce((sum, amount) => sum + amount, 0);
+    updateFloatingCart();
+  }
+
+  function updateFloatingCart() {
+    const store=stores.find(store=>store.id===cart.store);
+    const lines=Object.keys(cart.items).map(key=>cartLine(store,key)).filter(Boolean);
+    const show=active&&loaded&&route()!=='carrinho'&&lines.length>0;
+    document.body.classList.toggle('has-floating-cart',show);
+    if(!show){if(floatingCart)floatingCart.hidden=true;return;}
+    if(!floatingCart){
+      floatingCart=document.createElement('a');floatingCart.className='floating-cart';floatingCart.id='floating-cart';floatingCart.href='#carrinho';
+      floatingCart.innerHTML='<span class="floating-cart-icon" aria-hidden="true">🛒<b data-floating-badge></b></span><span class="floating-cart-copy"><strong>Ver carrinho</strong><small data-floating-count></small></span><strong data-floating-total></strong>';
+      document.body.append(floatingCart);
+    }
+    const quantity=lines.reduce((sum,line)=>sum+line.quantity,0),total=lines.reduce((sum,line)=>sum+line.price*line.quantity,0)+store.fee;
+    floatingCart.hidden=false;
+    $('[data-floating-badge]',floatingCart).textContent=quantity;
+    $('[data-floating-count]',floatingCart).textContent=quantity+(quantity===1?' item':' itens')+' · Entrega incluída';
+    $('[data-floating-total]',floatingCart).textContent=money(total);
+    floatingCart.setAttribute('aria-label','Abrir carrinho com '+quantity+(quantity===1?' item':' itens')+'. Total com entrega: '+money(total));
   }
 
   async function loadCatalog() {
@@ -194,7 +215,7 @@ export function customer(context) {
   function storeCard(store, index, matchingProducts = []) {
     return '<a class="restaurant-card" href="#loja/' + esc(store.id) + '"><div class="restaurant-photo"><img src="' +
       esc(storePhoto(store)) + '" alt="" loading="' + (index === 0 ? 'eager' : 'lazy') +
-      '">' + (!store.is_open ? '<span class="closed-tag">Fechado</span>' : '') +
+      '"><span class="' + (store.is_open ? 'open-tag' : 'closed-tag') + '">' + (store.is_open ? 'Aberto' : 'Fechado') + '</span>' +
       '</div><div class="restaurant-content">' + categoryTags(store) + '<div class="restaurant-heading"><h3>' + esc(store.name) + '</h3><span class="restaurant-arrow">' + icon('arrow') +
       '</span></div><p>' + esc(store.description) + '</p>' + (matchingProducts.length ? '<p class="search-matches">No cardápio: ' +
       matchingProducts.slice(0,2).map(product=>esc(product.name)).join(' · ') + (matchingProducts.length>2 ? '…' : '') + '</p>' : '') +
@@ -262,7 +283,7 @@ export function customer(context) {
       '<div class="section-head menu-head"><h2>Cardápio</h2><a class="btn outline" href="#carrinho">' + icon('bag') + ' Ver carrinho</a></div>' +
       '<div id="menu-categories" class="chips" aria-label="Filtrar produtos por categoria">' + menuChoices(store).map(([label,symbol]) =>
         '<button class="chip" data-menu-category="' + esc(label) + '" aria-pressed="' + (label===menuCategory) + '">' +
-        icon(symbol) + ' ' + esc(label==='uncategorized' ? 'Outros itens' : label) + '</button>').join('') + '</div>' +
+        icon(symbol) + ' ' + esc(label==='uncategorized' ? 'Itens sem categoria' : label) + '</button>').join('') + '</div>' +
       '<p id="menu-count" class="muted menu-count" aria-live="polite"></p><div class="products" id="menu-products"></div></div>';
     $('#menu-categories').onclick = event => {
       const button = event.target.closest('[data-menu-category]');
@@ -683,6 +704,8 @@ export function customer(context) {
   const catalogTimer = setInterval(() => { if (!document.hidden) refreshCatalog(); },10000);
   function stop() {
     active = false;
+    floatingCart?.remove();floatingCart=null;
+    document.body.classList.remove('has-floating-cart');
     stopHistory?.(); stopHistory=null;
     clearInterval(catalogTimer);
     closeMenu();
