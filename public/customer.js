@@ -2,6 +2,7 @@ import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, sortCategories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
 import { searchCatalog } from './catalog-search.js';
 import { mealGroups,resolveMealSelection,mealChoicesMarkup } from './meal-choices.js';
+import { renderLiveMarkup } from './live-markup.js';
 
 function stored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
@@ -506,7 +507,7 @@ export function customer(context) {
         const markup = orders.length ? '<div class="order-grid customer-order-grid">' + orders.map(order => orderCard(order,
           order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true,timeline:true,progress:true,compact:true,customerView:true,expanded:order.id === openOrderId })).join('') +
           '</div>' : '<div class="panel">' + empty('Nenhum pedido ativo','Explore os cardápios para fazer um novo pedido.') + '</div>';
-        if (list.innerHTML !== markup) list.innerHTML = markup;
+        renderLiveMarkup(list,markup);
       } catch (err) {
         if (list.isConnected && !list.querySelector('.order-grid')) list.innerHTML = empty('Pedidos indisponíveis',err.message);
       } finally {
@@ -575,7 +576,7 @@ export function customer(context) {
     function draw() {
       if (openOrderId && !orders.some(order=>order.id===openOrderId)) openOrderId=null;
       const markup = orders.map(order=>orderCard(order,'',{address:true,timeline:true,progress:true,compact:true,customerView:true,expanded:order.id===openOrderId})).join('');
-      if (grid.innerHTML!==markup) grid.innerHTML=markup;
+      renderLiveMarkup(grid,markup);
       $('.history-count').textContent = orders.length ? orders.length+' de '+count+' pedidos' : '';
       message.textContent = count ? (page+1<pages ? 'Role para carregar os próximos pedidos.' : 'Você chegou ao fim do histórico.') : 'Nenhum pedido no histórico. Pedidos entregues ou cancelados aparecerão aqui.';
       more.hidden=page+1>=pages;

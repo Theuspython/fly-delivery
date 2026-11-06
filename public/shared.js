@@ -118,7 +118,7 @@ export function profileAvatar(photo, name, scope = 'cliente', large = false) {
   const initials = (parts[0][0] + (parts.length > 1 ? parts.at(-1)[0] : '')).toUpperCase();
   return '<span class="profile-avatar' + (large ? ' profile-avatar-large' : '') + '" aria-hidden="true" data-initials="' + esc(initials) + '">' +
     (valid ? '<img src="/api/profile-photo?scope=' + (scope === 'loja' ? 'loja' : 'cliente') + '&amp;path=' +
-      encodeURIComponent(photo) + '" alt="" loading="lazy">' : esc(initials)) + '</span>';
+      encodeURIComponent(photo) + '" alt="" width="48" height="48" decoding="async" loading="lazy">' : esc(initials)) + '</span>';
 }
 
 export function orderCard(order, actions = '', options = {}) {
@@ -151,7 +151,7 @@ export function orderCard(order, actions = '', options = {}) {
   if (options.compact) {
     const detailsId = (options.customerView ? 'customer-order-' : 'merchant-order-') + order.id;
     const expanded = Boolean(options.expanded);
-    return '<article class="order-card compact-order order-stage-' + esc(order.status) + '"><div class="compact-order-head">' +
+    return '<article data-order-id="' + esc(order.id) + '" class="order-card compact-order order-stage-' + esc(order.status) + '"><div class="compact-order-head">' +
       '<div class="compact-order-identity">' + (options.customerView ? '' : profileAvatar(order.customer_photo,order.customer_name,'loja')) + '<div><span class="overline">Pedido #' + esc(order.id.slice(0,8)) + '</span><h3>' +
       esc(options.customerView ? order.store : order.customer_name || 'Cliente') + '</h3></div></div><div class="compact-order-controls"><span class="status status-' +
       esc(order.status) + '">' + esc(statuses[order.status]) + '</span>' +
@@ -174,6 +174,7 @@ export function bindTransitions(root, onSuccess, onError = () => {}) {
     if (!button || button.disabled) return;
     if (button.dataset.transition === 'cancelled' && !window.confirm('Cancelar este pedido?')) return;
     button.disabled = true;
+    button.setAttribute('data-pending-transition','');
     try {
       const order = await command('transition', { id:button.dataset.id, status:button.dataset.transition });
       await onSuccess({id:button.dataset.id,status:button.dataset.transition,order});
@@ -181,6 +182,7 @@ export function bindTransitions(root, onSuccess, onError = () => {}) {
       toast(error.message);
       onError();
     } finally {
+      button.removeAttribute('data-pending-transition');
       button.disabled = false;
     }
   };

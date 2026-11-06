@@ -1,12 +1,12 @@
 import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast } from './shared.js';
 import { invoicesMarkup, suspensionBanner } from './invoices.js';
 import { productForm, storeSettings, storeMarkup } from './operations.js';
+import { renderLiveMarkup } from './live-markup.js';
 
 const sections = [
   ['faturas','Faturas Fly Delivery','shield'],
   ['pedidos','Pedidos em andamento','bag'],
   ['produtos','Cadastro de produtos','burger'],
-  ['finalizados','Pedidos finalizados','check'],
   ['financeiro','Financeiro','grid'],
   ['perfil','Perfil da loja','store']
 ];
@@ -69,7 +69,6 @@ export function merchant(context) {
   let sequence = 0;
   let busy = false;
   let stores = [];
-  let historyStatus = 'delivered';
   let openOrderId = null;
   let queueFilter = 'placed';
   let activeOrders = [];
@@ -84,7 +83,7 @@ export function merchant(context) {
   const returnFields = Object.fromEntries(new URLSearchParams(location.search));
   const paymentReturn = 'invoice_return' in returnFields;
   if (paymentReturn) history.replaceState(null,'',location.pathname + '#faturas');
-  const section = () => labels[location.hash.slice(1)] ? location.hash.slice(1) : 'pedidos';
+  const section = () => location.hash==='#finalizados'?'financeiro':labels[location.hash.slice(1)] ? location.hash.slice(1) : 'pedidos';
 
   function closeMenu() { if (drawer?.open) drawer.close(); }
 
@@ -130,7 +129,7 @@ export function merchant(context) {
       (visible.length ? cards(visible,true,openOrderId) : '<div class="panel">' + empty(
         activeOrders.length ? 'Nenhum pedido neste status' : 'Nenhum pedido em andamento',
         activeOrders.length ? 'Escolha outro status para ver os demais pedidos.' :
-          'Os novos pedidos chegam aqui. Pedidos entregues ficam em Pedidos finalizados.') + '</div>');
+          'Os novos pedidos chegam aqui. As vendas concluídas ficam no Financeiro.') + '</div>');
   }
 
   async function refresh(force = false) {
@@ -144,7 +143,7 @@ export function merchant(context) {
       const billingStatus = await command('billing_settings');
       if (revision !== sequence || context.user !== user || currentSection !== section()) return;
       const banner = $('#merchant-billing-banner');
-      if (banner) banner.innerHTML = suspensionBanner(billingStatus.stores);
+      if (banner) renderLiveMarkup(banner,suspensionBanner(billingStatus.stores));
       let markup;
       if (currentSection === 'faturas') {
         const data = await command('merchant_invoices',{page});
@@ -154,12 +153,6 @@ export function merchant(context) {
         if (revision !== sequence || context.user !== user || currentSection !== section()) return;
         activeOrders = orders;
         markup = queueMarkup();
-      } else if (currentSection === 'finalizados') {
-        const data = await command('merchant_history',{ status:historyStatus,page });
-        if (revision !== sequence || context.user !== user || currentSection !== section()) return;
-        if (openOrderId && !data.orders.some(order => order.id === openOrderId)) openOrderId = null;
-        markup = data.count ? cards(data.orders,false,openOrderId) + pagination(data) : '<div class="panel">' +
-          empty('Nenhum pedido neste filtro','Os pedidos saem da tela inicial quando são entregues ou cancelados.') + '</div>';
       } else if (currentSection === 'financeiro') {
         const data = await command('merchant_finance',{ date_from:fromDate,date_to:toDate,page });
         markup = financeMarkup(data);
@@ -177,7 +170,7 @@ export function merchant(context) {
         ).join('') + '</div>' : '<div class="panel">' + empty('Nenhuma loja vinculada','A administração pode criar o acesso ao estabelecimento.','store') + '</div>';
       }
       if (revision !== sequence || context.user !== user || currentSection !== section() || !result?.isConnected) return;
-      if (result.innerHTML !== markup) result.innerHTML = markup;
+      renderLiveMarkup(result,markup);
       $('#merchant-error').textContent = '';
     } catch (error) {
       if (revision === sequence && $('#merchant-error')) $('#merchant-error').textContent = error.message;
@@ -212,11 +205,6 @@ export function merchant(context) {
       return;
     }
     let controls = '';
-    if (currentSection === 'finalizados') {
-      controls = '<label class="merchant-history-filter">Mostrar<select id="history-status">' +
-        [['delivered','Entregues'],['cancelled','Cancelados'],['all','Todos finalizados']].map(([value,label]) =>
-          '<option value="' + value + '"' + (value === historyStatus ? ' selected' : '') + '>' + label + '</option>').join('') + '</select></label>';
-    }
     if (currentSection === 'financeiro') {
       controls = '<form class="merchant-date-filter form-stack" id="finance-filter"><label>Período<select name="mode"><option value="day"' +
         (rangeMode === 'day' ? ' selected' : '') + '>Dia específico</option><option value="range"' +
@@ -228,12 +216,6 @@ export function merchant(context) {
     }
     body.innerHTML = '<div id="merchant-billing-banner"></div>' + controls + '<p class="form-error" id="merchant-error" role="alert"></p>' +
       '<div id="merchant-results"><p class="muted">Carregando…</p></div>';
-    if (currentSection === 'finalizados') $('#history-status').onchange = async event => {
-      historyStatus = event.target.value;
-      page = 0;
-      openOrderId = null;
-      await refresh(true);
-    };
     if (currentSection === 'financeiro') {
       const form = $('#finance-filter');
       $('[name=mode]',form).onchange = event => {
@@ -267,7 +249,7 @@ export function merchant(context) {
       if (filter) {
         queueFilter = filter.dataset.queueFilter;
         openOrderId = null;
-        result.innerHTML = queueMarkup();
+        renderLiveMarkup(result,queueMarkup());
         $('[data-queue-filter="' + queueFilter + '"]',result).focus();
         return;
       }
