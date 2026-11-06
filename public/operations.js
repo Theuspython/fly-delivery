@@ -297,7 +297,7 @@ export function operations(page, context) {
       if(button.dataset.adminEdit)editStoreForm(storeList.find(store=>store.id===button.dataset.adminEdit),()=>refresh(true));
       if(button.dataset.adminDelete)deleteStoreForm(storeList.find(store=>store.id===button.dataset.adminDelete),()=>refresh(true));
       if(button.dataset.adminSuspend)suspensionForm(storeList.find(store=>store.id===button.dataset.adminSuspend),()=>refresh(true));
-      if(button.dataset.adminResume){button.disabled=true;try{await command('admin_set_suspension',{id:button.dataset.adminResume,suspend:false});await refresh(true);toast('Suspensão administrativa removida. Faturas vencidas ainda precisam ser quitadas.');}catch(error){toast(error.message);}finally{button.disabled=false;}}
+      if(button.dataset.adminResume){button.disabled=true;try{await command('admin_set_suspension',{id:button.dataset.adminResume,suspend:false});await refresh(true);toast('Estabelecimento reativado.');}catch(error){toast(error.message);}finally{button.disabled=false;}}
       if(button.dataset.clientPage!==undefined){clientPage=Number(button.dataset.clientPage);await refresh(true);}
       if(button.hasAttribute('data-add-store')||button.dataset.linkStore)registrationForm('store',()=>refresh(true),storeList.find(store=>store.id===button.dataset.linkStore));
     };

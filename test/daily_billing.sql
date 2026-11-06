@@ -36,7 +36,11 @@ begin
  select id into inv1 from fly_delivery.daily_invoices where store_id=shop and invoice_date=historical_day;
  if inv1 is null or (select count(*) from fly_delivery.daily_invoices where store_id=shop)<>1 then raise exception 'Daily invoice duplicated or missing';end if;
  if (select due_at from fly_delivery.daily_invoices where id=inv1)<>((historical_day+1)+time '12:00') at time zone 'America/Sao_Paulo' then raise exception 'Wrong noon due date';end if;
- if exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Overdue shop still in storefront';end if;
+ perform set_config('request.jwt.claim.sub',admin::text,true);
+ if not exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Invoice suspended shop without administrator action';end if;
+ perform public.fd_api('admin_set_suspension',jsonb_build_object('id',shop,'suspend',true));
+ perform set_config('request.jwt.claim.sub',merchant::text,true);
+ if exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Suspended shop still in storefront';end if;
  if public.fd_api('session')->>'role'<>'merchant' then raise exception 'Suspension prevents payment access';end if;
  result:=public.fd_api('merchant_invoices');if not exists(select 1 from jsonb_array_elements(result->'invoices') i where i->>'id'=inv1::text and i->>'amount_cents'='1000') then raise exception 'Merchant invoice list wrong';end if;
  begin perform public.fd_billing_backend(fixture_secret,'acquire',jsonb_build_object('id',inv1,'actor',buyer));raise exception 'Buyer acquired merchant invoice';exception when raise_exception then if sqlerrm not like 'FD: Fatura não encontrada%' then raise;end if;end;
@@ -45,7 +49,10 @@ begin
  perform public.fd_billing_backend(fixture_secret,'save_link',jsonb_build_object('id',inv1,'lock_id',lock_id,'url','https://checkout.infinitepay.io/test'));
  begin perform public.fd_billing_backend(fixture_secret,'paid',jsonb_build_object('id',inv1,'amount',999,'transaction','fixture-1','slug','slug-1'));raise exception 'Wrong amount settled';exception when raise_exception then if sqlerrm not like 'FD: O valor confirmado%' then raise;end if;end;
  perform public.fd_billing_backend(fixture_secret,'paid',jsonb_build_object('id',inv1,'amount',1000,'transaction','fixture-1','slug','slug-1'));
- if not exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Paid shop did not return';end if;
+ if exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Payment bypassed administrator suspension';end if;
+ perform set_config('request.jwt.claim.sub',admin::text,true);
+ perform public.fd_api('admin_set_suspension',jsonb_build_object('id',shop,'suspend',false));
+ if not exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Reactivated shop did not return';end if;
  perform set_config('request.jwt.claim.sub',admin::text,true);
  perform public.fd_api('admin_set_commission','{"commission_bps":1500}');
  if (select platform_fee_cents from fly_delivery.orders where id=first_order)<>1000 then raise exception 'Rate change modified historical commission';end if;
