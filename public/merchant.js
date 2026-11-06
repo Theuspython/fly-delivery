@@ -19,9 +19,10 @@ const today = () => {
   return values.year + '-' + values.month + '-' + values.day;
 };
 const actions = order =>
-  (order.status === 'placed' ? transitionButton(order,'preparing','Aceitar e preparar') : '') +
-  (order.status === 'preparing' ? transitionButton(order,'ready','Pedido pronto · chamar motoboy') : '') +
-  (['placed','preparing','ready'].includes(order.status) ? transitionButton(order,'cancelled','Cancelar','outline') : '');
+  (order.status === 'placed' ? transitionButton(order,'preparing','Aceitar · iniciar produção') : '') +
+  (['preparing','ready','assigned'].includes(order.status) ? transitionButton(order,'picked_up','Pronto · saiu para entrega') : '') +
+  (order.status === 'picked_up' ? transitionButton(order,'delivered','Confirmar entrega') : '') +
+  (['placed','preparing','ready','assigned'].includes(order.status) ? transitionButton(order,'cancelled','Cancelar','outline') : '');
 const cards = (orders,active = false,openOrderId = null) => '<div class="order-grid merchant-order-grid">' + orders.map(order =>
   orderCard(order,active ? actions(order) : '',{
     address:true,progress:true,timeline:!active,compact:true,expanded:order.id === openOrderId
@@ -107,9 +108,9 @@ export function merchant(context) {
         if (revision !== sequence || context.user !== user || currentSection !== section()) return;
         if (openOrderId && !orders.some(order => order.id === openOrderId)) openOrderId = null;
         markup = orders.length ? '<div class="merchant-queue-summary">' +
-          ['placed','preparing','ready','assigned','picked_up'].map(status => {
-            const names = {placed:'Novos',preparing:'Em preparo',ready:'Prontos',assigned:'Motoboy aceitou',picked_up:'Em entrega'};
-            return '<span>' + names[status] + ' <b>' + orders.filter(order => order.status === status).length + '</b></span>';
+          ['placed','preparing','picked_up'].map(status => {
+            const names = {placed:'Novos',preparing:'Em produção',picked_up:'Em entrega'};
+            return '<span>' + names[status] + ' <b>' + orders.filter(order => order.status === status || (status === 'preparing' && ['ready','assigned'].includes(order.status))).length + '</b></span>';
           }).join('') + '</div>' + cards(orders,true,openOrderId) : '<div class="panel">' +
           empty('Nenhum pedido em andamento','Os novos pedidos chegam aqui. Pedidos entregues ficam em Pedidos finalizados.') + '</div>';
       } else if (currentSection === 'finalizados') {
@@ -128,7 +129,7 @@ export function merchant(context) {
             '<article class="panel merchant-profile">' +
             (store.image ? '<img src="' + esc(store.image) + '" alt="Foto de ' + esc(store.name) + '">' : '') +
             '<h2>' + esc(store.name) + '</h2><p>' + esc(store.categories.join(' · ')) +
-            '</p><p class="muted">' + esc(store.address || 'Configure a retirada para publicar a loja.') + '</p>' +
+            '</p><p class="muted">' + esc(store.address || 'Configure o endereço para publicar a loja.') + '</p>' +
             '<div class="order-actions"><button class="btn primary" data-settings="' + esc(store.id) +
             '">Foto, horários e entrega</button>' + (store.address ? '<button class="btn outline" data-open="' + esc(store.id) +
             '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '') + '</div></article>'

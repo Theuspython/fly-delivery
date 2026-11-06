@@ -8,22 +8,22 @@ import { RealtimeClient } from '@supabase/realtime-js';
 const root = fileURLToPath(new URL('../public/', import.meta.url)).replace(/\/$/, '');
 const supabase = process.env.SUPABASE_URL?.replace(/\/$/, '');
 const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-const googleMapsKey = process.env.GOOGLE_MAPS_BROWSER_KEY?.trim();
 const adminLogin = process.env.FLY_DELIVERY_ADMIN_LOGIN?.trim();
 const adminPassword = process.env.FLY_DELIVERY_ADMIN_PASSWORD;
 const adminBridge = process.env.FD_ADMIN_BRIDGE_TOKEN;
 const customerLookupKey = process.env.FD_CUSTOMER_LOOKUP_KEY;
-const routes = new Set(['/cliente/', '/loja/', '/entregador/', '/admin/']);
+const routes = new Set(['/cliente/', '/loja/', '/admin/']);
 const mime = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.webp': 'image/webp', '.json': 'application/json', '.webmanifest': 'application/manifest+json'
 };
-const titles = { loja:'Estabelecimento', entregador:'Entregador', admin:'Administração' };
-const apps = new Set(['cliente','loja','entregador','admin']);
+const titles = { loja:'Estabelecimento', admin:'Administração' };
+const apps = new Set(['cliente','loja','admin']);
 
 function cookiesFor(req) {
   const app = req.headers['x-fd-app'];
+  if (app === 'entregador') throw new HttpError(410,'O aplicativo de entregadores foi encerrado. A entrega é feita pelo estabelecimento.');
   const scope = apps.has(app) ? app : 'cliente';
   return { sessionCookie:'fd_' + scope + '_access', refreshCookie:'fd_' + scope + '_refresh' };
 }
@@ -205,7 +205,7 @@ async function streamOrders(req,res) {
 }
 
 async function api(req, res, url) {
-  const isRead = req.method === 'GET' && ['/api/catalog','/api/maps/browser-config','/api/order-updates'].includes(url.pathname);
+  const isRead = req.method === 'GET' && ['/api/catalog','/api/order-updates'].includes(url.pathname);
   if (!isRead) {
     if (req.method !== 'POST') throw new HttpError(405, 'Método indisponível.');
     const origin = req.headers.origin;
@@ -214,12 +214,6 @@ async function api(req, res, url) {
     }
   }
   if (url.pathname === '/api/order-updates') return streamOrders(req,res);
-  if (url.pathname === '/api/maps/browser-config') {
-    if (!/^AIza[A-Za-z0-9_-]{25,}$/.test(googleMapsKey ?? '')) {
-      throw new HttpError(503, 'O Google Maps ainda não está configurado. Você pode usar o GPS.');
-    }
-    return json(res, 200, { key:googleMapsKey });
-  }
   const { sessionCookie, refreshCookie } = cookiesFor(req);
   const cookies = readCookies(req);
   const access = cookies[sessionCookie];
@@ -256,8 +250,7 @@ async function api(req, res, url) {
       setSession(req,res,data);
       return json(res,200,{ signedIn:true });
     }
-    const operatorRole = sessionCookie === 'fd_loja_access' ? 'merchant' :
-      sessionCookie === 'fd_entregador_access' ? 'courier' : null;
+    const operatorRole = sessionCookie === 'fd_loja_access' ? 'merchant' : null;
     if (operatorRole && typeof input?.login === 'string' && !input.login.includes('@')) {
       const identity = operatorIdentity(input.login,operatorRole);
       const data = await upstream('/functions/v1/fd-onboarding',{
@@ -298,7 +291,8 @@ async function api(req, res, url) {
     if (provision && (sessionCookie !== 'fd_admin_access' || !access)) throw new HttpError(401,'Entre na administração para continuar.');
     if (change && (sessionCookie !== 'fd_loja_access' || !access)) throw new HttpError(401,'Entre no estabelecimento para continuar.');
     const input = await readJson(req);
-    const payload = provision ? { ...input,...operatorIdentity(input?.login,input?.kind === 'store' ? 'merchant' : 'courier') } : input;
+    if (provision && input?.kind !== 'store') throw new HttpError(400,'A administração cadastra apenas estabelecimentos.');
+    const payload = provision ? { ...input,...operatorIdentity(input?.login,'merchant') } : input;
     const data = await upstream('/functions/v1/fd-onboarding',{
       token:provision || change ? access : undefined,
       body:{ action:provision ? 'provision' : change ? 'operator_change_password' : 'activate',input:payload }
@@ -339,9 +333,10 @@ export function createApp() {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.gstatic.com https://*.google.com; worker-src 'self' blob:; frame-src https://*.google.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; worker-src 'self' blob:; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       const url = new URL(req.url, 'http://localhost');
+      if (['/entregador','/entregador/','/entregador.webmanifest','/api/maps/browser-config'].includes(url.pathname)) throw new HttpError(410,'Esta função foi encerrada. A entrega é feita pelo estabelecimento.');
       if (url.pathname === '/health') return json(res, 200, { status: 'ok' });
       if (url.pathname.startsWith('/api/')) return await api(req, res, url);
       if (!['GET', 'HEAD'].includes(req.method)) throw new HttpError(405, 'Método indisponível.');

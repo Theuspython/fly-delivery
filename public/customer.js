@@ -1,5 +1,4 @@
-import { mapPicker } from './google-map.js';
-import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit, geo,
+import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
 
 function stored(key, fallback) {
@@ -10,7 +9,6 @@ const normalize = value => value.normalize('NFD').replace(/\p{Diacritic}/gu,'').
 const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
 const storeCategories = store => store.categories ?? [store.category];
 const storePhoto = store => store.image || imageFor(store,store.products.find(product => product.image));
-const validPoint = point => point && Number.isFinite(point.lat) && Number.isFinite(point.lng);
 
 export function customer(context) {
   let stores = [];
@@ -144,32 +142,14 @@ export function customer(context) {
 
   function addressDialog() {
     if (route() !== 'carrinho' || !cart.store || !Object.keys(cart.items).length) return;
-    let selected = validPoint(address) ? address : null;
-    let picker;
-    const closePicker = () => picker?.remove();
     const el = modal('Onde vamos entregar?',
-      '<form class="form-stack" id="address-form"><label>Endereço, número e complemento<input name="address" maxlength="240" minlength="5" required value="' +
-      esc(address?.text) + '" placeholder="Ex. Rua das Flores, 110, ap. 12"></label>' +
-      '<p class="map-help">Toque no mapa e arraste o pino para ajustar.</p><div class="map" id="address-map" aria-label="Mapa de entrega"></div>' +
-      '<div class="map-actions"><button class="btn outline" type="button" data-gps>' + icon('location') + ' Usar GPS</button><span id="point-label" class="muted">Selecione o ponto de entrega</span></div>' +
+      '<form class="form-stack" id="address-form"><label>Endereço completo<textarea name="address" rows="4" maxlength="240" minlength="5" autocomplete="street-address" required placeholder="Rua, número, bairro, cidade e complemento">' +
+      esc(address?.text) + '</textarea></label><p class="muted">Informe rua, número, bairro e cidade. Inclua complemento ou ponto de referência para facilitar a entrega.</p>' +
       '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">Confirmar endereço</button></form>');
-    picker = mapPicker($('#address-map',el),selected,stores.find(store => store.id === cart.store),point => {
-      selected = point;
-      $('#point-label',el).textContent = 'Ponto selecionado';
-    });
-    el.addEventListener('close',closePicker,{ once:true });
-    $('[data-gps]',el).onclick = async event => {
-      const button = event.currentTarget;
-      button.disabled = true;
-      try {
-        const point = await geo();
-        if (button.isConnected) picker.set(point);
-      } catch (err) { if (button.isConnected) $('[data-form-error]',el).textContent = err.message; }
-      finally { button.disabled = false; }
-    };
     bindSubmit($('#address-form',el), async fields => {
-      if (!selected) throw new Error('Marque o ponto no mapa antes de confirmar.');
-      address = { text:String(fields.get('address')).trim(), lat:selected.lat, lng:selected.lng };
+      const text = String(fields.get('address')).trim();
+      if (text.length < 5 || text.length > 240) throw new Error('Informe seu endereço completo.');
+      address = { text };
       requestId = null;
       localStorage.removeItem(requestKey);
       el.close();
@@ -194,7 +174,7 @@ export function customer(context) {
           esc(product.id) + '" data-delta="1" aria-label="Aumentar ' + esc(product.name) + '">' + icon('plus') + '</button></div></div>').join('') +
           '</div>' + (missing ? '<p class="pilot-label">Itens indisponíveis serão removidos deste pedido.</p>' : '') + '</section>' +
           '<section class="panel"><h2>Entrega e pagamento</h2><button class="address-summary" data-address>' + icon('pin') + '<span>' +
-          esc(address?.text || 'Marcar endereço no mapa') + '</span>' + icon('arrow') + '</button><form class="form-stack" id="checkout">' +
+          esc(address?.text || 'Digitar endereço de entrega') + '</span>' + icon('arrow') + '</button><form class="form-stack" id="checkout">' +
           '<label>Forma de pagamento<select name="payment">' + Object.entries(payments).map(([key,value]) =>
             '<option value="' + key + '"' + (key === payment ? ' selected' : '') + '>' + value + '</option>').join('') + '</select></label>' +
           '<p class="muted">O pagamento é combinado com a loja e realizado na entrega.</p>' +
@@ -220,7 +200,7 @@ export function customer(context) {
       requestId ??= crypto.randomUUID();
       localStorage.setItem(requestKey,JSON.stringify(requestId));
       try {
-        await command('place', { store_id:store.id, request_id:requestId, address:address.text, lat:address.lat, lng:address.lng,
+        await command('place', { store_id:store.id, request_id:requestId, address:address.text,
           payment:fields.get('payment'), fee:store.fee, items:products.map(product => ({
             id:product.id, quantity:cart.items[product.id], price:product.price
           })) });
@@ -263,7 +243,7 @@ export function customer(context) {
         }
         statusByOrder = new Map(orders.map(order => [order.id,order.status]));
         const markup = orders.length ? '<div class="order-grid">' + orders.map(order => orderCard(order,
-          order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true,timeline:true })).join('') +
+          order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true,timeline:true,progress:true })).join('') +
           '</div>' : '<div class="panel">' + empty('Nenhum pedido ainda','Explore os cardápios para começar.') + '</div>';
         if (list.innerHTML !== markup) list.innerHTML = markup;
       } catch (err) {

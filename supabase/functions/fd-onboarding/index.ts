@@ -42,10 +42,10 @@ const validPassword = (value: unknown): value is string =>
 function operatorEmail(input: Record<string,unknown>) {
   const { login,operatorId,role } = input;
   if (typeof login !== 'string' || !/^[a-z0-9][a-z0-9._-]{2,39}$/.test(login) ||
-      typeof operatorId !== 'string' || !/^[a-f0-9]{40}$/.test(operatorId) || (role !== 'merchant' && role !== 'courier')) {
+      typeof operatorId !== 'string' || !/^[a-f0-9]{40}$/.test(operatorId) || role !== 'merchant') {
     throw new Failure(400,'Confira o login.');
   }
-  return 'fd-' + (role === 'merchant' ? 'm' : 'd') + '-' + operatorId + '@fly-delivery-piloto.up.railway.app';
+  return 'fd-m-' + operatorId + '@fly-delivery-piloto.up.railway.app';
 }
 
 function signIn(email: string,password: string) {
@@ -62,7 +62,7 @@ async function provision(request: Request, input: Record<string,unknown>) {
 
   const { kind,role,login,password,request_id,store_id } = input;
   const email = operatorEmail(input);
-  if ((kind !== 'store' && kind !== 'courier') || role !== (kind === 'store' ? 'merchant' : 'courier') ||
+  if (kind !== 'store' || role !== 'merchant' ||
       typeof request_id !== 'string' || !uuid.test(request_id) || !validPassword(password)) {
     throw new Failure(400,'Confira o login e a senha, que deve ter pelo menos 8 caracteres.');
   }
@@ -143,7 +143,7 @@ async function activate(input: Record<string,unknown>) {
     throw new Failure(400,'Link expirado ou já utilizado. Peça um novo acesso à administração.');
   }
   const profile = await rpc('fd_api',{ action:'session',input:{} },verification.data.access_token);
-  if (!['merchant','courier'].includes(profile?.role)) {
+  if (profile?.role !== 'merchant') {
     throw new Failure(403,'O acesso ainda não foi vinculado pela administração.');
   }
   const update = await call('/auth/v1/admin/users/' + user.id,{ method:'PUT',admin:true,body:{

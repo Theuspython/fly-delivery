@@ -10,8 +10,8 @@ export const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
 })[char]);
 export const statuses = {
-  placed:'Pedido recebido', preparing:'Em preparo', ready:'Pronto · aguardando motoboy',
-  assigned:'Motoboy a caminho da loja', picked_up:'Saiu para entrega', delivered:'Entregue', cancelled:'Cancelado'
+  placed:'Pedido recebido', preparing:'Pedido em produção', ready:'Pronto · confirmar saída',
+  assigned:'Pronto · confirmar saída', picked_up:'Saiu para entrega', delivered:'Entregue', cancelled:'Cancelado'
 };
 export const payments = { pix_delivery:'Pix na entrega', card_delivery:'Cartão na entrega', cash_delivery:'Dinheiro na entrega' };
 export const fallbackImages = {
@@ -104,28 +104,18 @@ export function bindSubmit(form, fn) {
   });
 }
 
-export const geo = () => new Promise((resolve, reject) => {
-  if (!navigator.geolocation) return reject(new Error('Seu navegador não disponibiliza localização.'));
-  navigator.geolocation.getCurrentPosition(({ coords }) => resolve({
-    lat:coords.latitude, lng:coords.longitude
-  }), () => reject(new Error('Não foi possível acessar a localização. Confira a permissão do navegador.')), {
-    enableHighAccuracy:true, maximumAge:15000, timeout:12000
-  });
-});
-
 export function empty(title, copy, symbol = 'bag') {
   return '<div class="empty"><div class="empty-icon">' + icon(symbol) + '</div><h3>' + esc(title) + '</h3><p>' + esc(copy) + '</p></div>';
 }
 
 export function orderCard(order, actions = '', options = {}) {
-  const details = options.offer ? '<p>Retirada em ' + esc(order.pickup) + ' · ' + esc(order.distance_km) + ' km até a entrega.</p>' :
-    '<p>' + (order.items ?? []).map(item => item.quantity + '× ' + esc(item.name)).join(' · ') + '</p>' +
+  const details = '<p>' + (order.items ?? []).map(item => item.quantity + '× ' + esc(item.name)).join(' · ') + '</p>' +
     (options.address ? '<p>' + icon('pin') + ' ' + esc(order.address) + '</p>' : '') +
     '<p>' + esc(payments[order.payment]) + '</p>';
   const customer = options.customer ? '<p class="order-customer"><strong>' + esc(order.customer_name || 'Cliente') + '</strong></p>' : '';
-  const stages = ['placed','preparing','ready','assigned','picked_up','delivered'];
-  const stageLabels = ['Recebido','Em preparo','Pronto','Motoboy aceitou','Saiu para entrega','Entregue'];
-  const currentStage = stages.indexOf(order.status);
+  const stages = ['placed','preparing','picked_up','delivered'];
+  const stageLabels = ['Recebido','Em produção','Saiu para entrega','Entregue'];
+  const currentStage = stages.indexOf(['ready','assigned'].includes(order.status) ? 'preparing' : order.status);
   const progress = options.progress && order.status !== 'cancelled'
     ? '<ol class="order-progress" aria-label="Etapas do pedido">' + stages.map((stage,index) =>
       '<li class="' + (index < currentStage ? 'done' : index === currentStage ? 'current' : 'waiting') + '"' +
@@ -137,7 +127,7 @@ export function orderCard(order, actions = '', options = {}) {
       new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(event.created_at)) + '</time></li>').join('') + '</ol>'
     : '';
   const body = progress + '<div class="order-body">' + details +
-    '<strong>' + money(options.offer ? order.fee : order.subtotal + order.fee) + (options.offer ? ' pela entrega' : '') +
+    '<strong>' + money(order.subtotal + order.fee) +
     '</strong></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '');
   if (options.compact) {
     const detailsId = 'merchant-order-' + order.id;
@@ -153,7 +143,7 @@ export function orderCard(order, actions = '', options = {}) {
   }
   return '<article class="order-card' + (options.progress ? ' order-stage-' + esc(order.status) : '') + '"><div class="order-head"><div><span class="overline">#' + esc(order.id.slice(0,8)) +
     '</span><h3>' + esc(order.store) + '</h3></div><span class="status status-' + esc(order.status) + '">' +
-    esc(options.offer ? 'Disponível' : statuses[order.status]) + '</span></div>' + customer + body + '</article>';
+    esc(statuses[order.status]) + '</span></div>' + customer + body + '</article>';
 }
 
 export const transitionButton = (order, status, label, className = 'primary') =>

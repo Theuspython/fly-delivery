@@ -296,7 +296,7 @@ p { line-height:1.5 }
 .order-stage-delivered { --stage-color:#196447; }
 .order-stage-cancelled { --stage-color:#766252; }
 .order-customer { margin-top:12px; font-size:1.03rem; }
-.order-progress { list-style:none; padding:0; margin:15px 0 12px; display:grid; gap:8px; grid-template-columns:repeat(3,minmax(0,1fr)); }
+.order-progress { list-style:none; padding:0; margin:15px 0 12px; display:grid; gap:8px; grid-template-columns:repeat(2,minmax(0,1fr)); }
 .order-progress li { display:flex; align-items:center; gap:5px; min-width:0; font-size:.68rem; line-height:1.25; color:var(--muted); }
 .order-progress li > span { flex:none; display:grid; place-items:center; width:21px; height:21px; border:1px solid var(--line); border-radius:50%; font-size:.65rem; }
 .order-progress .icon { width:13px; height:13px; }

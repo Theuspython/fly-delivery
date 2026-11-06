@@ -4,7 +4,7 @@ import { operations } from './operations.js';
 import { merchant } from './merchant.js';
 
 const page = location.pathname.split('/')[1] || 'cliente';
-const titles = { cliente:'Cliente', loja:'Estabelecimento', entregador:'Entregador', admin:'Administração' };
+const titles = { cliente:'Cliente', loja:'Estabelecimento', admin:'Administração' };
 let current = null;
 let installEvent;
 let app;
@@ -164,7 +164,6 @@ function account() {
   if (canChangePassword) $('[data-change-password]',el).onclick = changePassword;
   $('[data-logout]',el).onclick = async () => {
     try {
-      if (current.role === 'courier') await command('presence', { online:false }).catch(() => {});
       await api('logout', {});
       current = null;
       profile = null;
@@ -175,7 +174,7 @@ function account() {
 }
 
 function openActivation() {
-  if (page !== 'loja' && page !== 'entregador') return;
+  if (page !== 'loja') return;
   const prefix = '#ativar=';
   if (!location.hash.startsWith(prefix)) return;
   const token = location.hash.slice(prefix.length);
