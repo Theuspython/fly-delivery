@@ -23,6 +23,8 @@ const actions = order =>
   (['preparing','ready','assigned'].includes(order.status) ? transitionButton(order,'picked_up','Pronto · saiu para entrega') : '') +
   (order.status === 'picked_up' ? transitionButton(order,'delivered','Confirmar entrega') : '') +
   (['placed','preparing','ready','assigned'].includes(order.status) ? transitionButton(order,'cancelled','Cancelar','outline') : '');
+const queueStage = order => ['ready','assigned'].includes(order.status) ? 'preparing' : order.status;
+const queueLabels = {all:'Todos',placed:'Novos',preparing:'Em produção',picked_up:'Em entrega'};
 const cards = (orders,active = false,openOrderId = null) => '<div class="order-grid merchant-order-grid">' + orders.map(order =>
   orderCard(order,active ? actions(order) : '',{
     address:true,progress:true,timeline:!active,compact:true,expanded:order.id === openOrderId
@@ -65,6 +67,8 @@ export function merchant(context) {
   let stores = [];
   let historyStatus = 'delivered';
   let openOrderId = null;
+  let queueFilter = 'all';
+  let activeOrders = [];
   let page = 0;
   let previousSection;
   let owner;
@@ -94,6 +98,19 @@ export function merchant(context) {
     $('[data-merchant-menu]')?.setAttribute('aria-expanded','true');
   }
 
+  function queueMarkup() {
+    const visible = activeOrders.filter(order => queueFilter === 'all' || queueStage(order) === queueFilter);
+    if (openOrderId && !visible.some(order => order.id === openOrderId)) openOrderId = null;
+    return '<div class="merchant-queue-summary" role="group" aria-label="Filtrar pedidos por status">' +
+      Object.entries(queueLabels).map(([status,label]) => '<button type="button" data-queue-filter="' + status +
+        '" aria-pressed="' + (queueFilter === status) + '">' + label + ' <b>' +
+        activeOrders.filter(order => status === 'all' || queueStage(order) === status).length + '</b></button>').join('') + '</div>' +
+      (visible.length ? cards(visible,true,openOrderId) : '<div class="panel">' + empty(
+        activeOrders.length ? 'Nenhum pedido neste status' : 'Nenhum pedido em andamento',
+        activeOrders.length ? 'Escolha outro status para ver os demais pedidos.' :
+          'Os novos pedidos chegam aqui. Pedidos entregues ficam em Pedidos finalizados.') + '</div>');
+  }
+
   async function refresh(force = false) {
     if (context.user?.role !== 'merchant' || (busy && !force)) return;
     const currentSection = section();
@@ -106,13 +123,8 @@ export function merchant(context) {
       if (currentSection === 'pedidos') {
         const orders = await command('merchant_active_orders');
         if (revision !== sequence || context.user !== user || currentSection !== section()) return;
-        if (openOrderId && !orders.some(order => order.id === openOrderId)) openOrderId = null;
-        markup = orders.length ? '<div class="merchant-queue-summary">' +
-          ['placed','preparing','picked_up'].map(status => {
-            const names = {placed:'Novos',preparing:'Em produção',picked_up:'Em entrega'};
-            return '<span>' + names[status] + ' <b>' + orders.filter(order => order.status === status || (status === 'preparing' && ['ready','assigned'].includes(order.status))).length + '</b></span>';
-          }).join('') + '</div>' + cards(orders,true,openOrderId) : '<div class="panel">' +
-          empty('Nenhum pedido em andamento','Os novos pedidos chegam aqui. Pedidos entregues ficam em Pedidos finalizados.') + '</div>';
+        activeOrders = orders;
+        markup = queueMarkup();
       } else if (currentSection === 'finalizados') {
         const data = await command('merchant_history',{ status:historyStatus,page });
         if (revision !== sequence || context.user !== user || currentSection !== section()) return;
@@ -155,6 +167,8 @@ export function merchant(context) {
       previousSection = null;
       stores = [];
       openOrderId = null;
+      queueFilter = 'all';
+      activeOrders = [];
     }
     const currentSection = section();
     if (previousSection !== currentSection) { page = 0; openOrderId = null; }
@@ -220,6 +234,14 @@ export function merchant(context) {
     }
     const result = $('#merchant-results');
     result.addEventListener('click',event => {
+      const filter = event.target.closest('[data-queue-filter]');
+      if (filter) {
+        queueFilter = filter.dataset.queueFilter;
+        openOrderId = null;
+        result.innerHTML = queueMarkup();
+        $('[data-queue-filter="' + queueFilter + '"]',result).focus();
+        return;
+      }
       const toggle = event.target.closest('[data-toggle-order]');
       if (!toggle) return;
       openOrderId = openOrderId === toggle.dataset.toggleOrder ? null : toggle.dataset.toggleOrder;

@@ -43,6 +43,7 @@ const icons = {
   location:'<circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>',
   check:'<path d="m5 12 4 4L19 6"/>',
   install:'<path d="M12 3v12m-4-4 4 4 4-4M4 17v4h16v-4"/>',
+  more:'<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
   menu:'<path d="M5 7h14M5 12h14M5 17h14"/>'
 };
 export const icon = name => '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (icons[name] ?? icons.spark) + '</svg>';

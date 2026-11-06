@@ -21,6 +21,11 @@ export function customer(context) {
   const requestKey = 'fd-request:' + context.user.id;
   let cart = stored(cartKey, { store:null, items:{} });
   let address = null;
+  let primaryAddress = null;
+  let addressLoaded = false;
+  let addressError;
+  let addressLoading;
+  let usePrimary = true;
   let active = true;
   let payment = 'pix_delivery';
   let requestId = stored(requestKey, null);
@@ -43,18 +48,51 @@ export function customer(context) {
     return loading;
   }
 
-  function saveCart() {
+  async function loadPrimaryAddress() {
+    if (addressLoading) return addressLoading;
+    addressLoading = command('customer_address').then(value => {
+      if (!active) return;
+      primaryAddress = value;
+      addressError = null;
+    }).catch(error => { if (active) addressError = error.message; }).finally(() => {
+      addressLoaded = true;
+      addressLoading = null;
+    });
+    return addressLoading;
+  }
+
+  const deliveryAddress = () => usePrimary ? primaryAddress : address;
+  function resetRequest() {
     requestId = null;
     localStorage.removeItem(requestKey);
+  }
+
+  function alignCategories(smooth = true) {
+    const list = $('#categories');
+    const selected = list?.querySelector('[aria-pressed=true]');
+    if (!selected) return;
+    const last = list.querySelector('.chip:last-child');
+    list.style.setProperty('--category-tail',Math.max(0,list.clientWidth - last.offsetWidth - 15) + 'px');
+    const left = selected.getBoundingClientRect().left - list.getBoundingClientRect().left + list.scrollLeft - 3;
+    list.scrollTo({ left:category === 'Todas' ? 0 : Math.max(0,left),
+      behavior:smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'instant' });
+  }
+  const resizeCategories = () => alignCategories(false);
+  window.addEventListener('resize',resizeCategories);
+
+  function saveCart() {
+    resetRequest();
     localStorage.setItem(cartKey, JSON.stringify(cart));
     updateHeader();
   }
 
   function setItem(store, product, increment) {
+    if (increment < 0 && (cart.store !== store.id || !cart.items[product.id])) return;
     if (cart.store && cart.store !== store.id) {
       if (!window.confirm('Você tem itens de outra loja. Deseja começar um novo carrinho?')) return;
       cart = { store:store.id, items:{} };
       address = null;
+      usePrimary = true;
     }
     const quantity = (cart.items[product.id] ?? 0) + increment;
     if (quantity > 25) return toast('Você pode adicionar até 25 unidades por item.');
@@ -63,9 +101,10 @@ export function customer(context) {
       cart.store = store.id;
       cart.items[product.id] = quantity;
     } else delete cart.items[product.id];
-    if (!Object.keys(cart.items).length) { cart.store = null; address = null; }
+    if (!Object.keys(cart.items).length) { cart.store = null; address = null; usePrimary = true; }
     saveCart();
-    render();
+    if (route().startsWith('loja/')) syncProductQuantities(store);
+    else render();
     if (increment > 0 && route().startsWith('loja/')) toast(product.name + ' no carrinho.');
   }
 
@@ -115,8 +154,10 @@ export function customer(context) {
       category = button.dataset.category;
       for (const chip of $('#categories').children) chip.setAttribute('aria-pressed', chip === button);
       catalogGrid();
+      alignCategories();
     };
     catalogGrid();
+    alignCategories(false);
     if (view === 'lojas' && previousView !== view) requestAnimationFrame(() => $('.browse')?.scrollIntoView({ behavior:'smooth' }));
   }
 
@@ -129,33 +170,90 @@ export function customer(context) {
       (!store.is_open ? '<p class="pilot-label">Esta loja está fechada.</p>' : '') +
       '<div class="section-head menu-head"><h2>Cardápio</h2><a class="btn outline" href="#carrinho">' + icon('bag') + ' Ver carrinho</a></div>' +
       '<div class="products">' + (store.products.length ? store.products.map(product =>
-        '<article class="product"><div><h3>' + esc(product.name) + '</h3><p>' + esc(product.description) + '</p><strong>' +
+        '<article class="product" data-menu-product="' + esc(product.id) + '"><div class="product-content"><div><h3>' + esc(product.name) + '</h3><p>' + esc(product.description) + '</p><strong>' +
         money(product.price) + '</strong></div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
-        '<button class="icon-button add-product" data-product="' + esc(product.id) + '" aria-label="Adicionar ' + esc(product.name) +
-        '" ' + (store.is_open ? '' : 'disabled') + '>' + icon('plus') + '</button></article>').join('') :
+        '</div><div class="product-quantity"><button class="icon-button" data-product="' + esc(product.id) + '" data-menu-delta="-1" aria-label="Diminuir ' + esc(product.name) + '">' +
+        icon('minus') + '</button><span><output aria-label="Quantidade de ' + esc(product.name) + '" data-product-quantity>0</output> no carrinho</span>' +
+        '<button class="icon-button add-product" data-product="' + esc(product.id) + '" data-menu-delta="1" aria-label="Adicionar ' + esc(product.name) + '">' +
+        icon('plus') + '</button></div></article>').join('') :
         empty('Cardápio em breve','A loja está preparando os primeiros produtos.','store')) + '</div></div>';
     $('.products').onclick = event => {
       const button = event.target.closest('[data-product]');
-      if (button) setItem(store,store.products.find(product => product.id === button.dataset.product),1);
+      if (button) setItem(store,store.products.find(product => product.id === button.dataset.product),Number(button.dataset.menuDelta));
     };
+    syncProductQuantities(store);
   }
 
-  function addressDialog() {
-    if (route() !== 'carrinho' || !cart.store || !Object.keys(cart.items).length) return;
-    const el = modal('Onde vamos entregar?',
-      '<form class="form-stack" id="address-form"><label>Endereço completo<textarea name="address" rows="4" maxlength="240" minlength="5" autocomplete="street-address" required placeholder="Rua, número, bairro, cidade e complemento">' +
-      esc(address?.text) + '</textarea></label><p class="muted">Informe rua, número, bairro e cidade. Inclua complemento ou ponto de referência para facilitar a entrega.</p>' +
-      '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">Confirmar endereço</button></form>');
+  function syncProductQuantities(store) {
+    for (const card of document.querySelectorAll('[data-menu-product]')) {
+      const quantity = cart.store === store.id ? cart.items[card.dataset.menuProduct] ?? 0 : 0;
+      $('[data-product-quantity]',card).textContent = quantity;
+      $('[data-menu-delta="-1"]',card).disabled = quantity === 0;
+      $('[data-menu-delta="1"]',card).disabled = !store.is_open || quantity >= 25;
+    }
+  }
+
+  function addressDialog(asPrimary = false) {
+    if (!asPrimary && (route() !== 'carrinho' || !cart.store || !Object.keys(cart.items).length)) return;
+    const current = asPrimary ? primaryAddress : address;
+    const el = modal(asPrimary ? 'Endereço principal' : 'Endereço desta entrega',
+      '<form class="form-stack" id="address-form"><label>Rua<input name="street" autocomplete="address-line1" minlength="2" maxlength="120" required value="' +
+      esc(current?.street) + '" placeholder="Nome da rua"></label><div class="address-fields"><label>Número<input name="number" maxlength="20" required value="' +
+      esc(current?.number) + '" placeholder="Ex. 110 ou S/N"></label><label>Bairro<input name="neighborhood" autocomplete="address-level3" minlength="2" maxlength="80" required value="' +
+      esc(current?.neighborhood) + '" placeholder="Nome do bairro"></label></div>' +
+      (asPrimary ? '<p class="muted">Este endereço ficará salvo na sua conta para os próximos pedidos.</p>' :
+        '<label class="check"><input type="checkbox" name="save_primary"> Salvar como endereço principal</label>') +
+      '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">' +
+      (asPrimary ? 'Salvar endereço principal' : 'Usar nesta entrega') + '</button></form>');
     bindSubmit($('#address-form',el), async fields => {
-      const text = String(fields.get('address')).trim();
-      if (text.length < 5 || text.length > 240) throw new Error('Informe seu endereço completo.');
-      address = { text };
-      requestId = null;
-      localStorage.removeItem(requestKey);
+      const value = Object.fromEntries(['street','number','neighborhood'].map(key => [key,String(fields.get(key) ?? '').trim()]));
+      if (value.street.length < 2 || !value.number || value.neighborhood.length < 2) throw new Error('Preencha rua, número e bairro.');
+      value.text = value.street + ', ' + value.number + ' - ' + value.neighborhood;
+      const savePrimary = asPrimary || fields.has('save_primary');
+      if (savePrimary) {
+        await addressLoading;
+        if (!active) return;
+        const saved = await command('save_customer_address',value);
+        if (!active) return;
+        primaryAddress = saved;
+        addressLoaded = true;
+        addressError = null;
+      }
+      if (route() === 'carrinho') {
+        usePrimary = savePrimary;
+        if (!savePrimary) address = value;
+      }
+      resetRequest();
       el.close();
-      updateHeader();
-      if (route() === 'carrinho') render();
+      render();
+      if (savePrimary) toast('Endereço principal salvo.');
     });
+  }
+
+  function addressView() {
+    main.innerHTML = '<div class="wrap page customer-address-page"><a class="back-link" href="#lojas">' + icon('back') +
+      ' Voltar à vitrine</a><span class="overline accent">SUA CONTA</span><h1>Endereços</h1><section class="panel">' +
+      (!addressLoaded ? '<p class="muted">Carregando endereço…</p>' : addressError ?
+        '<p class="form-error" role="alert">' + esc(addressError) + '</p><button class="btn outline" data-retry-address>Tentar novamente</button>' :
+        '<div class="section-head"><h2>Endereço principal</h2>' + icon('pin') + '</div>' + (primaryAddress ?
+        '<p class="saved-address">' + esc(primaryAddress.street) + ', ' + esc(primaryAddress.number) + '<br>' + esc(primaryAddress.neighborhood) + '</p>' :
+        '<p class="muted saved-address">Cadastre rua, número e bairro para usar nos próximos pedidos.</p>') +
+        '<button class="btn primary" data-save-address>' + (primaryAddress ? 'Editar endereço' : 'Cadastrar endereço') + '</button>') + '</section></div>';
+    if ($('[data-save-address]')) $('[data-save-address]').onclick = () => addressDialog(true);
+    if ($('[data-retry-address]')) $('[data-retry-address]').onclick = async () => { await loadPrimaryAddress(); render(); };
+  }
+
+  function deliveryAddressMarkup() {
+    const chosen = deliveryAddress();
+    return '<fieldset class="delivery-address-options"><legend>Endereço de entrega</legend>' +
+      (primaryAddress ? '<label><input type="radio" name="delivery_address" value="primary"' + (usePrimary ? ' checked' : '') +
+        '><span><strong>Endereço principal</strong><small>' + esc(primaryAddress.text) + '</small></span></label>' : '') +
+      '<label><input type="radio" name="delivery_address" value="new"' + (!usePrimary || !primaryAddress ? ' checked' : '') +
+      '><span><strong>' + (primaryAddress ? 'Outro endereço' : 'Digitar endereço') + '</strong><small>Rua, número e bairro desta entrega</small></span></label></fieldset>' +
+      (!addressLoaded ? '<p class="muted">Buscando endereço principal…</p>' : addressError ?
+        '<p class="form-error" role="alert">Não foi possível carregar seu endereço salvo. Você pode digitar outro.</p><button type="button" class="text-button" data-retry-address>Tentar novamente</button>' : '') +
+      '<button type="button" class="address-summary" data-address>' + icon('pin') + '<span>' +
+      esc(chosen?.text || 'Informar rua, número e bairro') + '</span>' + icon('arrow') + '</button>';
   }
 
   function cartView() {
@@ -173,8 +271,7 @@ export function customer(context) {
           esc(product.name) + '">' + icon('minus') + '</button><b>' + cart.items[product.id] + '</b><button class="icon-button" data-id="' +
           esc(product.id) + '" data-delta="1" aria-label="Aumentar ' + esc(product.name) + '">' + icon('plus') + '</button></div></div>').join('') +
           '</div>' + (missing ? '<p class="pilot-label">Itens indisponíveis serão removidos deste pedido.</p>' : '') + '</section>' +
-          '<section class="panel"><h2>Entrega e pagamento</h2><button class="address-summary" data-address>' + icon('pin') + '<span>' +
-          esc(address?.text || 'Digitar endereço de entrega') + '</span>' + icon('arrow') + '</button><form class="form-stack" id="checkout">' +
+          '<section class="panel"><h2>Entrega e pagamento</h2>' + deliveryAddressMarkup() + '<form class="form-stack" id="checkout">' +
           '<label>Forma de pagamento<select name="payment">' + Object.entries(payments).map(([key,value]) =>
             '<option value="' + key + '"' + (key === payment ? ' selected' : '') + '>' + value + '</option>').join('') + '</select></label>' +
           '<p class="muted">O pagamento é combinado com a loja e realizado na entrega.</p>' +
@@ -190,17 +287,25 @@ export function customer(context) {
       const button = event.target.closest('[data-delta]');
       if (button) setItem(store,products.find(product => product.id === button.dataset.id),Number(button.dataset.delta));
     };
-    $('[data-address]').onclick = addressDialog;
+    $('[data-address]').onclick = () => addressDialog(usePrimary && Boolean(primaryAddress));
+    for (const input of document.querySelectorAll('[name=delivery_address]')) input.onchange = () => {
+      usePrimary = input.value === 'primary';
+      resetRequest();
+      render();
+      if (!usePrimary && !address) addressDialog();
+    };
+    if ($('[data-retry-address]')) $('[data-retry-address]').onclick = async () => { await loadPrimaryAddress(); render(); };
     $('select[name=payment]').onchange = event => {
       payment = event.target.value;
     };
     bindSubmit($('#checkout'), async fields => {
-      if (!address) return addressDialog();
+      const chosen = deliveryAddress();
+      if (!chosen) return addressDialog();
       if (!context.user) return context.signIn();
       requestId ??= crypto.randomUUID();
       localStorage.setItem(requestKey,JSON.stringify(requestId));
       try {
-        await command('place', { store_id:store.id, request_id:requestId, address:address.text,
+        await command('place', { store_id:store.id, request_id:requestId, address:chosen.text,
           payment:fields.get('payment'), fee:store.fee, items:products.map(product => ({
             id:product.id, quantity:cart.items[product.id], price:product.price
           })) });
@@ -215,6 +320,7 @@ export function customer(context) {
       }
       cart = { store:null,items:{} };
       address = null;
+      usePrimary = true;
       saveCart();
       location.hash = 'pedidos';
       toast('Pedido enviado à loja.');
@@ -272,6 +378,7 @@ export function customer(context) {
     orderStream?.close();
     const view = route();
     if (view === 'pedidos') orderView();
+    else if (view === 'enderecos') addressView();
     else if (view === 'carrinho' && loaded) cartView();
     else if (view.startsWith('loja/') && loaded) {
       const store = stores.find(candidate => candidate.id === view.slice(5));
@@ -285,9 +392,12 @@ export function customer(context) {
   }
 
   loadCatalog().then(() => render());
+  loadPrimaryAddress().then(() => {
+    if (active && !$('#dialog').open && ['carrinho','enderecos'].includes(route())) render();
+  });
   async function refreshCatalog() {
     const view = route();
-    if (!active || view === 'pedidos' || $('#dialog').open) return;
+    if (!active || ['pedidos','enderecos'].includes(view) || $('#dialog').open) return;
     const before = JSON.stringify(stores);
     const hadError = Boolean(error);
     await loadCatalog();
@@ -299,6 +409,7 @@ export function customer(context) {
     active = false;
     clearInterval(ordersTimer);
     orderStream?.close();
+    window.removeEventListener('resize',resizeCategories);
     window.removeEventListener('hashchange',refreshCatalog);
     window.removeEventListener('focus',refreshCatalog);
   }

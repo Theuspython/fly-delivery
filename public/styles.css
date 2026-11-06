@@ -338,3 +338,32 @@ p { line-height:1.5 }
 .compact-order-controls .btn { min-height:36px; padding:7px 11px; font-size:.8rem; }
 .compact-order-details[hidden] { display:none!important; }
 .compact-order-details { border-top:1px solid var(--line); margin-top:15px; padding-top:1px; }
+
+.chips .chip { flex:none; }
+.chips::after { content:''; flex:0 0 var(--category-tail,0px); }
+.product { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
+.product-content { display:flex; align-items:center; gap:12px; min-width:0; }
+.product-content > div { flex:1; min-width:0; }
+.product-quantity { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:10px; border-top:1px solid var(--line); }
+.product-quantity > span { color:var(--muted); font-size:.85rem; }
+.product-quantity output { font-weight:800; color:var(--ink); }
+.customer-menu { position:relative; }
+#customer-navigation { position:absolute; top:calc(100% + 10px); right:0; width:205px; padding:7px; border:1px solid var(--line); border-radius:14px; background:var(--surface); box-shadow:0 12px 35px #251b171a; }
+#customer-navigation[hidden] { display:none; }
+#customer-navigation a { display:flex; align-items:center; gap:10px; padding:13px 12px; border-radius:9px; font-weight:700; }
+#customer-navigation a:hover { background:var(--soft); color:var(--orange); }
+.customer-address-page { max-width:720px; }
+.customer-address-page > .panel { margin-top:22px; }
+.customer-address-page h2 { font-size:1.4rem; }
+.saved-address { margin:18px 0; overflow-wrap:anywhere; }
+.address-fields { display:grid; grid-template-columns:minmax(80px,1fr) minmax(0,2fr); gap:12px; }
+.delivery-address-options { border:0; padding:0; margin:18px 0 12px; display:grid; gap:9px; }
+.delivery-address-options legend { font-size:.9rem; font-weight:800; margin-bottom:9px; }
+.delivery-address-options label { display:flex; align-items:center; gap:10px; padding:12px; border:1px solid var(--line); border-radius:11px; cursor:pointer; min-width:0; }
+.delivery-address-options label:has(input:checked) { border-color:var(--orange); background:var(--soft); }
+.delivery-address-options input { flex:none; accent-color:var(--orange); width:17px; height:17px; }
+.delivery-address-options strong { display:block; font-size:.9rem; }
+.delivery-address-options small { display:block; color:var(--muted); margin-top:4px; overflow-wrap:anywhere; }
+.merchant-queue-summary > button { display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:10px; min-height:44px; padding:8px 13px; background:var(--surface); font-size:.85rem; font-weight:700; color:var(--muted); }
+.merchant-queue-summary > button[aria-pressed=true] { border-color:var(--orange); color:var(--orange); background:var(--soft); }
+.merchant-queue-summary > button[aria-pressed=true] b { color:var(--orange); }
