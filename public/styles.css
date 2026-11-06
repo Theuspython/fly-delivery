@@ -83,10 +83,10 @@ p { line-height:1.5 }
 .restaurant-card:hover { transform:translateY(-3px); box-shadow:0 10px 32px #5c352313 }
 .restaurant-photo { position:relative; aspect-ratio:1.58; background:#e8dbd0 }
 .restaurant-photo img { width:100%; height:100%; object-fit:cover }
-.photo-tag,.closed-tag { position:absolute; top:10px; left:10px; border-radius:100px; padding:5px 9px; font-size:.67rem; font-weight:800; color:var(--ink); background:#fffaf3 }
+.closed-tag { position:absolute; top:10px; left:10px; border-radius:100px; padding:5px 9px; font-size:.67rem; font-weight:800; color:var(--ink); background:#fffaf3 }
 .closed-tag { left:auto; right:10px; background:#2e211b; color:white }
 .restaurant-content { padding:14px }
-.restaurant-content > div:first-child { display:flex; justify-content:space-between; align-items:center; gap:5px }
+.restaurant-heading { display:flex; justify-content:space-between; align-items:center; gap:5px }
 .restaurant-content h3 { font-size:1.16rem }
 .restaurant-arrow { display:grid; place-items:center; width:28px; height:28px; flex:none; color:var(--orange); border-radius:50%; background:var(--soft) }
 .restaurant-arrow .icon { width:15px }
@@ -107,7 +107,6 @@ p { line-height:1.5 }
 .store-banner { position:relative; isolation:isolate; min-height:245px; overflow:hidden; display:flex; align-items:end; border-radius:var(--radius); background:#281911; color:#fff8ee; padding:27px; margin-bottom:18px }
 .store-banner img { position:absolute; inset:0 0 0 auto; width:65%; height:100%; object-fit:cover; z-index:-2 }
 .store-banner::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(90deg,#281911 20%,#281911dd 44%,#28191132 100%) }
-.store-banner .photo-tag { position:static; display:inline-block; margin-bottom:9px }
 .store-banner p { margin:7px 0 10px; max-width:36ch }
 .store-banner .restaurant-meta .icon { color:#ff875d }
 .menu-head { margin-top:24px }
@@ -381,3 +380,9 @@ p { line-height:1.5 }
 .install-steps { padding-left:24px; margin:14px 0 0; }
 .install-steps li { padding-left:5px; line-height:1.6; margin-bottom:13px; }
 .install-note { margin-top:14px; font-size:.85rem; }
+
+.store-category-tags { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:7px; }
+.store-category-tags > span { display:inline-block; padding:3px 6px; border-radius:6px; color:#85533e; background:#fbefe7; font-size:.65rem; font-weight:700; line-height:1.25; }
+.store-category-tags-banner > span { color:#fff4e9; background:#ffffff1c; border:1px solid #ffffff24; }
+.menu-count { font-size:.82rem; margin:4px 0 12px; }
+.menu-empty { grid-column:1/-1; }

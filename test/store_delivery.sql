@@ -66,7 +66,7 @@ begin
     where item->>'id'=store_id::text and item->>'image'=photo and item->'categories' @> '["Pizza","Brasileira"]'::jsonb) then
     raise exception 'Store cover or categories not visible';
   end if;
-  result := public.fd_api('save_product',jsonb_build_object('store_id',store_id,'name','Pizza Teste','price',1990,'active',true));
+  result := public.fd_api('save_product',jsonb_build_object('store_id',store_id,'name','Pizza Teste','category','Pizza','price',1990,'active',true));
   product_id := (result->>'id')::uuid;
   if not fly_delivery.can_upload(store_id::text || '/' || gen_random_uuid() || '.webp') then raise exception 'Merchant cannot upload'; end if;
 

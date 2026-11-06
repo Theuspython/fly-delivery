@@ -126,11 +126,15 @@ export function storeSettings(store,done) {
 }
 
 export function productForm(store, product, done) {
+  const allowedCategories = store.categories ?? [store.category];
+  const selectedCategory = allowedCategories.includes(product?.category) ? product.category : allowedCategories.length === 1 ? allowedCategories[0] : '';
   let photo = product?.image;
   let selectedFile;
   const el = modal(product ? 'Editar produto' : 'Adicionar produto',
     '<form class="form-stack" id="product-form"><label>Nome<input name="name" required minlength="2" maxlength="100" value="' +
-    esc(product?.name) + '"></label><label>Descrição<textarea name="description" rows="3" maxlength="500">' + esc(product?.description) +
+    esc(product?.name) + '"></label><label>Categoria<select name="category" required><option value="" disabled' + (!selectedCategory ? ' selected' : '') + '>Selecione a categoria</option>' +
+    allowedCategories.map(label => '<option value="' + esc(label) + '"' + (selectedCategory===label ? ' selected' : '') + '>' + esc(label) + '</option>').join('') +
+    '</select></label><label>Descrição<textarea name="description" rows="3" maxlength="500">' + esc(product?.description) +
     '</textarea></label><label>Preço (R$)<input name="price" type="number" min="0.01" max="10000" step="0.01" required value="' +
     (product ? product.price / 100 : '') + '"></label><label>Foto do produto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
     (photo ? '<button class="text-button" type="button" data-remove-photo>Remover foto atual</button>' : '') +
@@ -139,13 +143,14 @@ export function productForm(store, product, done) {
   const remove = $('[data-remove-photo]',el);
   if (remove) remove.onclick = () => { photo = null; remove.textContent = 'Foto marcada para remoção'; remove.disabled = true; };
   bindSubmit($('#product-form',el), async data => {
+    if (!allowedCategories.includes(data.get('category'))) throw new Error('Selecione uma das categorias do estabelecimento.');
     const file = data.get('photo');
     if (file?.size && file !== selectedFile) {
       if (file.size > 3 * 1024 * 1024) throw new Error('A foto deve ter até 3 MB.');
       photo = (await api('upload?store=' + encodeURIComponent(store.id),file)).url;
       selectedFile = file;
     }
-    await command('save_product', { id:product?.id, store_id:store.id, name:data.get('name'), description:data.get('description'),
+    await command('save_product', { id:product?.id, store_id:store.id, name:data.get('name'), category:data.get('category'), description:data.get('description'),
       price:Math.round(Number(data.get('price'))*100), active:data.has('active'), image:photo });
     el.close();
     toast('Produto salvo.');
@@ -171,7 +176,7 @@ export function storeMarkup(store, role, productsOnly = false) {
     (store.active ? store.accepting_now ? 'Aberta agora' : 'Fechada agora' : 'Não publicada') + '</span></div>' +
     '<div class="order-actions">' + actions + '</div><div class="menu-admin">' + (store.products.length ? store.products.map(product =>
       '<div class="menu-admin-row">' + (product.image ? '<img src="' + esc(product.image) + '" alt="">' : '<span class="product-placeholder">' + icon('bag') + '</span>') +
-      '<div><strong>' + esc(product.name) + '</strong><p>' + money(product.price) + ' · ' + (product.active ? 'Disponível' : 'Pausado') +
+      '<div><strong>' + esc(product.name) + '</strong><p>' + money(product.price) + ' · ' + esc(product.category || 'Categoria pendente') + ' · ' + (product.active ? 'Disponível' : 'Pausado') +
       '</p></div><button class="btn outline" data-edit-product="' + esc(product.id) + '" data-store="' + esc(store.id) + '">Editar</button></div>').join('') :
       '<p class="muted">Nenhum produto cadastrado.</p>') + '</div></article>';
 }
