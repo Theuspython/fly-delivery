@@ -466,3 +466,5 @@ p { line-height:1.5 }
 .admin-client-search { max-width:420px; margin-bottom:18px; }
 .admin-client-search input { flex:1; min-width:0; }
 @media(max-width:650px) { .invoice-grid { grid-template-columns:1fr; } .open-invoice .invoice-heading { flex-wrap:wrap; } }
+
+.management-card .management-trusted { border-left:3px solid #a86c0c; padding-left:9px; color:#785108; font-size:.83rem; }

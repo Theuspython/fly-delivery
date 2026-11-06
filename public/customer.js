@@ -549,8 +549,10 @@ export function customer(context) {
   }
   window.addEventListener('hashchange',refreshCatalog);
   window.addEventListener('focus',refreshCatalog);
+  const catalogTimer = setInterval(() => { if (!document.hidden) refreshCatalog(); },10000);
   function stop() {
     active = false;
+    clearInterval(catalogTimer);
     closeMenu();
     drawer?.remove();
     drawer = null;

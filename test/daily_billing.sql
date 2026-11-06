@@ -37,7 +37,7 @@ begin
  if inv1 is null or (select count(*) from fly_delivery.daily_invoices where store_id=shop)<>1 then raise exception 'Daily invoice duplicated or missing';end if;
  if (select due_at from fly_delivery.daily_invoices where id=inv1)<>((historical_day+1)+time '12:00') at time zone 'America/Sao_Paulo' then raise exception 'Wrong noon due date';end if;
  perform set_config('request.jwt.claim.sub',admin::text,true);
- if not exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Invoice suspended shop without administrator action';end if;
+ if exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Overdue invoice did not suspend shop';end if;
  perform public.fd_api('admin_set_suspension',jsonb_build_object('id',shop,'suspend',true));
  perform set_config('request.jwt.claim.sub',merchant::text,true);
  if exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Suspended shop still in storefront';end if;

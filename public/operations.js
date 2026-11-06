@@ -73,6 +73,14 @@ function suspensionForm(store,done) {
   });
 }
 
+function trustReleaseForm(store,done) {
+  const el=modal('Liberar por confiança','<form class="form-stack" id="trust-release-form"><p><strong>' + esc(store.name) + '</strong> voltará à vitrine mesmo com ' + (store.suspension?.overdue_count ?? 0) + ' fatura(s) vencida(s), no total de <strong>' + money(store.suspension?.overdue_cents ?? 0) + '</strong>.</p><p class="muted">A dívida continua em aberto. Esta liberação vale para as faturas já vencidas; uma nova fatura que vencer sem pagamento poderá bloquear a loja novamente.</p>' + formEnd('Confirmar liberação de confiança') + '</form>');
+  bindSubmit($('#trust-release-form',el),async()=>{
+    await command('admin_set_suspension',{id:store.id,suspend:false,trust:true});
+    el.close();toast('Estabelecimento liberado por confiança. A dívida continua em aberto.');await done();
+  });
+}
+
 function deleteStoreForm(store,done) {
   const el=modal('Excluir estabelecimento','<form class="form-stack" id="delete-store-form"><p>Excluir <strong>' + esc(store.name) +
     '</strong> da operação?</p><p class="muted">A loja sairá da vitrine. Produtos e histórico de pedidos finalizados serão preservados.</p>' +
@@ -220,10 +228,10 @@ export function storeMarkup(store, role, productsOnly = false) {
   const labels = esc((store.categories ?? [store.category]).join(' · '));
   if (role === 'admin') {
     return '<article class="panel management-card"><span class="overline">' + labels + '</span><h3>' + esc(store.name) +
-      '</h3>' + (store.suspension?.suspended ? '<p class="management-suspended">' + esc(store.suspension.reason) + '</p>' : '') + '<p>' + (store.owner_login ? 'Login: ' + esc(store.owner_login) : 'Acesso a configurar') + '</p>' +
+      '</h3>' + (store.suspension?.suspended || store.suspension?.trusted ? '<p class="' + (store.suspension.suspended ? 'management-suspended' : 'management-trusted') + '">' + esc(store.suspension.reason) + '</p>' : '') + '<p>' + (store.owner_login ? 'Login: ' + esc(store.owner_login) : 'Acesso a configurar') + '</p>' +
       '<div class="order-actions"><button class="btn outline" data-admin-edit="' + esc(store.id) + '">Editar</button>' +
       '<button class="btn outline danger-text" data-admin-delete="' + esc(store.id) + '">Excluir</button>' +
-      '<button class="btn outline" ' + (store.suspension?.manual ? 'data-admin-resume' : 'data-admin-suspend') + '="' + esc(store.id) + '">' + (store.suspension?.manual ? 'Reativar' : 'Suspender') + '</button>' +
+      '<button class="btn outline" ' + (store.suspension?.suspended ? 'data-admin-resume' : 'data-admin-suspend') + '="' + esc(store.id) + '">' + (store.suspension?.suspended ? store.suspension.overdue_count ? 'Liberar por confiança' : 'Reativar' : 'Suspender') + '</button>' +
       (!store.owner_login ? '<button class="btn outline" data-link-store="' + esc(store.id) + '">Criar login</button>' : '') + '</div></article>';
   }
   const actions = (productsOnly ? '' : '<button class="btn outline" data-settings="' + esc(store.id) + '">Foto e horários</button>' +
@@ -297,7 +305,7 @@ export function operations(page, context) {
       if(button.dataset.adminEdit)editStoreForm(storeList.find(store=>store.id===button.dataset.adminEdit),()=>refresh(true));
       if(button.dataset.adminDelete)deleteStoreForm(storeList.find(store=>store.id===button.dataset.adminDelete),()=>refresh(true));
       if(button.dataset.adminSuspend)suspensionForm(storeList.find(store=>store.id===button.dataset.adminSuspend),()=>refresh(true));
-      if(button.dataset.adminResume){button.disabled=true;try{await command('admin_set_suspension',{id:button.dataset.adminResume,suspend:false});await refresh(true);toast('Estabelecimento reativado.');}catch(error){toast(error.message);}finally{button.disabled=false;}}
+      if(button.dataset.adminResume){const store=storeList.find(store=>store.id===button.dataset.adminResume);if(store.suspension?.overdue_count){trustReleaseForm(store,()=>refresh(true));return;}button.disabled=true;try{await command('admin_set_suspension',{id:button.dataset.adminResume,suspend:false});await refresh(true);toast('Estabelecimento reativado.');}catch(error){toast(error.message);}finally{button.disabled=false;}}
       if(button.dataset.clientPage!==undefined){clientPage=Number(button.dataset.clientPage);await refresh(true);}
       if(button.hasAttribute('data-add-store')||button.dataset.linkStore)registrationForm('store',()=>refresh(true),storeList.find(store=>store.id===button.dataset.linkStore));
     };
