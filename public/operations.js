@@ -135,13 +135,31 @@ export function productForm(store, product, done) {
     esc(product?.name) + '"></label><label>Categoria<select name="category" required><option value="" disabled' + (!selectedCategory ? ' selected' : '') + '>Selecione a categoria</option>' +
     allowedCategories.map(label => '<option value="' + esc(label) + '"' + (selectedCategory===label ? ' selected' : '') + '>' + esc(label) + '</option>').join('') +
     '</select></label><label>Descrição<textarea name="description" rows="3" maxlength="500">' + esc(product?.description) +
-    '</textarea></label><label>Preço (R$)<input name="price" type="number" min="0.01" max="10000" step="0.01" required value="' +
-    (product ? product.price / 100 : '') + '"></label><label>Foto do produto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
+    '</textarea></label><label data-base-price>Preço (R$)<input name="price" type="number" min="0.01" max="10000" step="0.01" required value="' +
+    (product ? product.price / 100 : '') + '"></label>' +
+    '<fieldset class="size-editor"><legend>Tamanhos do produto</legend><label class="check"><input type="checkbox" name="has_sizes"' + (product?.sizes?.length ? ' checked' : '') + '> O item possui tamanhos diferentes</label><div data-sizes-editor><p class="muted">Marque os tamanhos disponíveis e informe o preço de cada um.</p><div class="size-editor-grid">' +
+    ['P','M','G'].map(name=>{ const size=product?.sizes?.find(size=>size.name===name); return '<div><label class="check"><input type="checkbox" data-size-enabled="' + name + '"' + (!product?.sizes?.length || size ? ' checked' : '') + '> ' + name + '</label><label>Preço ' + name + ' (R$)<input data-size-price="' + name + '" type="number" min="0.01" max="10000" step="0.01" required value="' + (size ? size.price/100 : '') + '"></label></div>'; }).join('') +
+    '</div></div></fieldset><label>Foto do produto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
     '<fieldset class="optional-editor"><legend>Opcionais do produto</legend><label class="check"><input type="checkbox" name="has_options"' +
     ((product?.options ?? []).length ? ' checked' : '') + '> Este produto tem opcionais</label><div data-options-editor><p class="muted">O cliente pode escolher um ou mais adicionais. O valor é somado por unidade do produto.</p><div data-option-rows></div><button type="button" class="btn outline" data-add-option>Adicionar opcional</button></div></fieldset>' +
     (photo ? '<button class="text-button" type="button" data-remove-photo>Remover foto atual</button>' : '') +
     '<p class="muted">JPG, PNG ou WebP, até 3 MB.</p><label class="check"><input name="active" type="checkbox"' +
     (product?.active !== false ? ' checked' : '') + '> Disponível no cardápio</label>' + formEnd('Salvar produto') + '</form>');
+  const sizesEnabled = $('[name=has_sizes]',el);
+  const sizesEditor = $('[data-sizes-editor]',el);
+  const basePrice = $('[name=price]',el);
+  function toggleSizes() {
+    sizesEditor.hidden = !sizesEnabled.checked;
+    $('[data-base-price]',el).hidden = sizesEnabled.checked;
+    basePrice.disabled = sizesEnabled.checked;
+    for (const input of sizesEditor.querySelectorAll('[data-size-enabled]')) {
+      input.disabled = !sizesEnabled.checked;
+      $('[data-size-price="' + input.dataset.sizeEnabled + '"]',el).disabled = !sizesEnabled.checked || !input.checked;
+    }
+  }
+  sizesEnabled.onchange = toggleSizes;
+  sizesEditor.onchange = toggleSizes;
+  toggleSizes();
   const editor = $('[data-options-editor]',el);
   const rows = $('[data-option-rows]',el);
   const enabled = $('[name=has_options]',el);
@@ -168,6 +186,11 @@ export function productForm(store, product, done) {
   if (remove) remove.onclick = () => { photo = null; remove.textContent = 'Foto marcada para remoção'; remove.disabled = true; };
   bindSubmit($('#product-form',el), async data => {
     if (!allowedCategories.includes(data.get('category'))) throw new Error('Selecione uma das categorias do estabelecimento.');
+    const sizes = sizesEnabled.checked ? [...sizesEditor.querySelectorAll('[data-size-enabled]:checked')].map(input=>{
+      const value=$('[data-size-price="' + input.dataset.sizeEnabled + '"]',el).value;
+      return {name:input.dataset.sizeEnabled,price:value.trim() ? Math.round(Number(value)*100) : NaN};
+    }) : [];
+    if (sizesEnabled.checked && (!sizes.length || sizes.some(size=>!Number.isInteger(size.price) || size.price<1 || size.price>1000000))) throw new Error('Selecione pelo menos um tamanho e preencha os preços.');
     const options = enabled.checked ? [...rows.children].map(row=>({id:row.dataset.optionId,name:$('[data-option-name]',row).value.trim(),price:($('[data-option-price]',row).value.trim() ? Math.round(Number($('[data-option-price]',row).value)*100) : NaN)})) : [];
     if (enabled.checked && (!options.length || options.some(option=>!option.name || !Number.isInteger(option.price) || option.price<0 || option.price>1000000))) throw new Error('Preencha o nome e o valor de cada opcional.');
     const file = data.get('photo');
@@ -177,7 +200,7 @@ export function productForm(store, product, done) {
       selectedFile = file;
     }
     await command('save_product', { id:product?.id, store_id:store.id, name:data.get('name'), category:data.get('category'), description:data.get('description'),
-      price:Math.round(Number(data.get('price'))*100), active:data.has('active'), image:photo, options });
+      price:sizes.length ? Math.min(...sizes.map(size=>size.price)) : Math.round(Number(data.get('price'))*100), active:data.has('active'), image:photo, options, sizes });
     el.close();
     toast('Produto salvo.');
     await done();
@@ -202,7 +225,8 @@ export function storeMarkup(store, role, productsOnly = false) {
     (store.active ? store.accepting_now ? 'Aberta agora' : 'Fechada agora' : 'Não publicada') + '</span></div>' +
     '<div class="order-actions">' + actions + '</div><div class="menu-admin">' + (store.products.length ? store.products.map(product =>
       '<div class="menu-admin-row">' + (product.image ? '<img src="' + esc(product.image) + '" alt="">' : '<span class="product-placeholder">' + icon('bag') + '</span>') +
-      '<div><strong>' + esc(product.name) + '</strong><p>' + money(product.price) + ' · ' + esc(product.category || 'Categoria pendente') + ' · ' + (product.active ? 'Disponível' : 'Pausado') +
+      '<div><strong>' + esc(product.name) + '</strong><p>' + (product.sizes?.length ? product.sizes.map(size=>esc(size.name) + ': ' + money(size.price)).join(' · ') : money(product.price)) +
+      ' · ' + esc(product.category || 'Categoria pendente') + ' · ' + (product.active ? 'Disponível' : 'Pausado') +
       '</p></div><button class="btn outline" data-edit-product="' + esc(product.id) + '" data-store="' + esc(store.id) + '">Editar</button></div>').join('') :
       '<p class="muted">Nenhum produto cadastrado.</p>') + '</div></article>';
 }

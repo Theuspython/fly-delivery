@@ -20,6 +20,8 @@ export function customer(context) {
   let menuStore = null;
   let menuCategory = 'Todas';
   const optionDrafts = new Map();
+  const sizeDrafts = new Map();
+  let note = '';
   const cartKey = 'fd-cart:' + context.user.id;
   const requestKey = 'fd-request:' + context.user.id;
   let cart = stored(cartKey, { store:null, items:{} });
@@ -130,22 +132,27 @@ export function customer(context) {
   }
 
   const optionIds = (product) => [...(optionDrafts.get(product.id) ?? [])].sort();
-  const lineKey = (product,ids=[]) => product.id + (ids.length ? ':' + [...ids].sort().join(',') : '');
+  const productSize = product => (product.sizes ?? []).find(size=>size.name===sizeDrafts.get(product.id)) ?? product.sizes?.[0];
+  const lineKey = (product,ids=[],size='') => product.id + (ids.length || size ? ':' + [...ids].sort().join(',') : '') + (size ? ':' + size : '');
   function cartLine(store,key) {
-    const [id,selection=''] = key.split(':');
+    const [id,selection='',sizeName=''] = key.split(':');
     const product = store?.products.find(product=>product.id===id);
     if (!product) return null;
+    const size = (product.sizes ?? []).find(size=>size.name===sizeName);
+    if ((product.sizes?.length && !size) || (sizeName && !size)) return null;
+    const basePrice = size?.price ?? product.price;
     const ids = selection ? selection.split(',') : [];
     const options = ids.map(id=>(product.options ?? []).find(option=>option.id===id));
     if (options.some(option=>!option)) return null;
-    return {key,product,options,quantity:cart.items[key],price:product.price+options.reduce((sum,option)=>sum+option.price,0)};
+    return {key,product,options,size: size?.name ?? '',basePrice,quantity:cart.items[key],price:basePrice+options.reduce((sum,option)=>sum+option.price,0)};
   }
-  function setItem(store, product, increment, ids = optionIds(product)) {
-    const key = lineKey(product,ids);
+  function setItem(store, product, increment, ids = optionIds(product), size = productSize(product)?.name ?? '') {
+    const key = lineKey(product,ids,size);
     if (increment < 0 && (cart.store !== store.id || !cart.items[key])) return;
     if (cart.store && cart.store !== store.id) {
       if (!window.confirm('Você tem itens de outra loja. Deseja começar um novo carrinho?')) return;
       cart = { store:store.id, items:{} };
+      note = '';
       address = null;
       usePrimary = true;
     }
@@ -156,7 +163,7 @@ export function customer(context) {
       cart.store = store.id;
       cart.items[key] = quantity;
     } else delete cart.items[key];
-    if (!Object.keys(cart.items).length) { cart.store = null; address = null; usePrimary = true; }
+    if (!Object.keys(cart.items).length) { cart.store = null; address = null; note = ''; usePrimary = true; }
     saveCart();
     if (route().startsWith('loja/')) syncProductQuantities(store);
     else render();
@@ -261,10 +268,11 @@ export function customer(context) {
       if (button) setItem(store,store.products.find(product => product.id === button.dataset.product),Number(button.dataset.menuDelta));
     };
     $('#menu-products').onchange = event => {
-      const input = event.target.closest('[data-option]');
+      const input = event.target.closest('[data-option],[data-size]');
       if (!input) return;
       const card = input.closest('[data-menu-product]');
-      optionDrafts.set(card.dataset.menuProduct,[...card.querySelectorAll('[data-option]:checked')].map(input=>input.dataset.option));
+      if (input.hasAttribute('data-size')) sizeDrafts.set(card.dataset.menuProduct,input.value);
+      else optionDrafts.set(card.dataset.menuProduct,[...card.querySelectorAll('[data-option]:checked')].map(input=>input.dataset.option));
       syncProductQuantities(store);
     };
     menuGrid(store);
@@ -277,8 +285,10 @@ export function customer(context) {
     $('#menu-count').textContent = products.length + (products.length===1 ? ' produto' : ' produtos');
     $('#menu-products').innerHTML = products.length ? products.map(product =>
       '<article class="product" data-menu-product="' + esc(product.id) + '"><div class="product-content"><div><h3>' + esc(product.name) + '</h3><p>' + esc(product.description) + '</p><strong>' +
-      money(product.price) + '</strong></div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
-      '</div>' + ((product.options ?? []).length ? '<details class="product-options"><summary>Opcionais <span>' + product.options.length + ' disponíveis</span></summary><div class="option-choices">' +
+      ((product.sizes ?? []).length ? 'A partir de ' : '') + money(product.price) + '</strong></div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
+      '</div>' + ((product.sizes ?? []).length ? '<fieldset class="product-sizes"><legend>Escolha o tamanho</legend><div>' + product.sizes.map(size=>
+        '<label><input type="radio" name="size-' + esc(product.id) + '" data-size value="' + esc(size.name) + '"' + (productSize(product)?.name===size.name ? ' checked' : '') + '><span><b>' + esc(size.name) + '</b><small>' + money(size.price) + '</small></span></label>').join('') + '</div></fieldset>' : '') +
+      ((product.options ?? []).length ? '<details class="product-options"><summary>Opcionais <span>' + product.options.length + ' disponíveis</span></summary><div class="option-choices">' +
         product.options.map(option=>'<label><input type="checkbox" data-option="' + esc(option.id) + '"' + (optionIds(product).includes(option.id)?' checked':'') + '><span>' + esc(option.name) + '</span><strong>+ ' + money(option.price) + '</strong></label>').join('') +
         '</div></details>' : '') + '<p class="configured-price" data-configured-price aria-live="polite"></p><div class="product-quantity"><button class="icon-button" data-product="' + esc(product.id) + '" data-menu-delta="-1" aria-label="Diminuir ' + esc(product.name) + '">' +
       icon('minus') + '</button><span><output aria-label="Quantidade de ' + esc(product.name) + '" data-product-quantity>0</output> no carrinho</span>' +
@@ -293,10 +303,12 @@ export function customer(context) {
     for (const card of document.querySelectorAll('[data-menu-product]')) {
       const product = store.products.find(product=>product.id===card.dataset.menuProduct);
       const ids = optionIds(product);
-      const quantity = cart.store === store.id ? cart.items[lineKey(product,ids)] ?? 0 : 0;
+      const size = productSize(product);
+      const basePrice = size?.price ?? product.price;
+      const quantity = cart.store === store.id ? cart.items[lineKey(product,ids,size?.name)] ?? 0 : 0;
       const extra = (product.options ?? []).filter(option=>ids.includes(option.id)).reduce((sum,option)=>sum+option.price,0);
-      $('[data-configured-price]',card).textContent = ids.length ? 'Unidade com opcionais: ' + money(product.price+extra) : '';
-      for (const input of card.querySelectorAll('[data-option]')) input.disabled = !store.is_open;
+      $('[data-configured-price]',card).textContent = size || ids.length ? (size ? 'Tamanho ' + size.name + (ids.length ? ' com opcionais' : '') + ': ' : 'Unidade com opcionais: ') + money(basePrice+extra) : '';
+      for (const input of card.querySelectorAll('[data-option],[data-size]')) input.disabled = !store.is_open;
       $('[data-product-quantity]',card).textContent = quantity;
       $('[data-menu-delta="-1"]',card).disabled = quantity === 0;
       $('[data-menu-delta="1"]',card).disabled = !store.is_open || quantity >= 25;
@@ -376,7 +388,7 @@ export function customer(context) {
       (!products.length ? '<div class="panel">' + empty('Seu carrinho está vazio', missing ? 'Os itens anteriores não estão mais disponíveis.' : 'Encontre algo gostoso no cardápio.') +
         (missing ? '<button class="btn outline" data-clear>Limpar carrinho</button>' : '') + '</div>' :
         '<div class="split"><section class="panel"><h2>' + esc(store.name) + '</h2><div class="cart-items">' + products.map(line =>
-          '<div class="cart-row"><div><strong>' + esc(line.product.name) + '</strong>' +
+          '<div class="cart-row"><div><strong>' + esc(line.product.name) + (line.size ? ' · Tamanho ' + esc(line.size) : '') + '</strong>' +
           (line.options.length ? '<p class="cart-option-list">' + line.options.map(option=>'+ ' + esc(option.name) + ' (' + money(option.price) + ')').join('<br>') + '</p>' : '') +
           '<p>' + money(line.price) + ' por unidade · ' + money(line.price * line.quantity) + '</p></div>' +
           '<div class="stepper"><button class="icon-button" data-id="' + esc(line.key) + '" data-delta="-1" aria-label="Diminuir ' +
@@ -386,6 +398,7 @@ export function customer(context) {
           '<section class="panel"><h2>Entrega e pagamento</h2>' + deliveryAddressMarkup() + '<form class="form-stack" id="checkout">' +
           '<label>Forma de pagamento<select name="payment">' + Object.entries(payments).map(([key,value]) =>
             '<option value="' + key + '"' + (key === payment ? ' selected' : '') + '>' + value + '</option>').join('') + '</select></label>' +
+          '<label>Observação para o estabelecimento <span class="muted">(opcional)</span><textarea name="note" rows="3" maxlength="500" placeholder="Ex.: retirar a cebola">' + esc(note) + '</textarea></label>' +
           '<p class="muted">O pagamento é combinado com a loja e realizado na entrega.</p>' +
           '<div class="total-line"><span>Produtos</span><strong>' + money(subtotal) + '</strong></div>' +
           '<div class="total-line"><span>Entrega</span><strong>' + money(store.fee) + '</strong></div>' +
@@ -393,13 +406,13 @@ export function customer(context) {
           '<p class="form-error" data-form-error role="alert"></p>' +
           '<button class="btn primary wide" type="submit"' + (!store.is_open ? ' disabled' : '') + '>' +
           (store.is_open ? 'Confirmar pedido' : 'Loja fechada') + '</button></form></section></div>') + '</div>';
-    if ($('[data-clear]')) $('[data-clear]').onclick = () => { cart = { store:null,items:{} }; saveCart(); render(); };
+    if ($('[data-clear]')) $('[data-clear]').onclick = () => { cart = { store:null,items:{} }; note = ''; saveCart(); render(); };
     if (!products.length) return;
     $('.cart-items').onclick = event => {
       const button = event.target.closest('[data-delta]');
       if (button) {
         const line = products.find(line=>line.key===button.dataset.id);
-        setItem(store,line.product,Number(button.dataset.delta),line.options.map(option=>option.id));
+        setItem(store,line.product,Number(button.dataset.delta),line.options.map(option=>option.id),line.size);
       }
     };
     $('[data-address]').onclick = () => addressDialog(usePrimary && Boolean(primaryAddress));
@@ -410,6 +423,7 @@ export function customer(context) {
       if (!usePrimary && !address) addressDialog();
     };
     if ($('[data-retry-address]')) $('[data-retry-address]').onclick = async () => { await loadPrimaryAddress(); render(); };
+    $('[name=note]').oninput = event => { note = event.target.value; resetRequest(); };
     $('select[name=payment]').onchange = event => {
       payment = event.target.value;
     };
@@ -421,8 +435,8 @@ export function customer(context) {
       localStorage.setItem(requestKey,JSON.stringify(requestId));
       try {
         await command('place', { store_id:store.id, request_id:requestId, address:chosen.text,
-          payment:fields.get('payment'), fee:store.fee, items:products.map(line => ({
-            id:line.product.id, quantity:line.quantity, price:line.product.price, options:line.options.map(option=>({id:option.id,price:option.price}))
+          payment:fields.get('payment'), note:fields.get('note'), fee:store.fee, items:products.map(line => ({
+            id:line.product.id, quantity:line.quantity, price:line.basePrice, size:line.size || null, options:line.options.map(option=>({id:option.id,price:option.price}))
           })) });
       } catch (err) {
         if (err.message.includes('mudaram') || err.message.includes('cardápio') || err.message.includes('opcionais')) {
@@ -434,6 +448,7 @@ export function customer(context) {
         throw err;
       }
       cart = { store:null,items:{} };
+      note = '';
       address = null;
       usePrimary = true;
       saveCart();

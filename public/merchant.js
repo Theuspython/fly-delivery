@@ -102,7 +102,7 @@ export function merchant(context) {
     const visible = activeOrders.filter(order => queueStage(order) === queueFilter);
     if (openOrderId && !visible.some(order => order.id === openOrderId)) openOrderId = null;
     return '<div class="merchant-queue-summary" role="group" aria-label="Filtrar pedidos por status">' +
-      Object.entries(queueLabels).map(([status,label]) => '<button type="button" data-queue-filter="' + status +
+      Object.entries(queueLabels).map(([status,label]) => '<button type="button" class="order-stage-' + status + '" data-queue-filter="' + status +
         '" aria-pressed="' + (queueFilter === status) + '">' + label + ' <b>' +
         activeOrders.filter(order => queueStage(order) === status).length + '</b></button>').join('') + '</div>' +
       (visible.length ? cards(visible,true,openOrderId) : '<div class="panel">' + empty(

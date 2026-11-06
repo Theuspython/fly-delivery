@@ -122,10 +122,11 @@ export function profileAvatar(photo, name, scope = 'cliente', large = false) {
 }
 
 export function orderCard(order, actions = '', options = {}) {
-  const details = '<ul class="order-item-list">' + (order.items ?? []).map(item => '<li><strong>' + item.quantity + '× ' + esc(item.name) + '</strong>' +
+  const details = '<ul class="order-item-list">' + (order.items ?? []).map(item => '<li><strong>' + item.quantity + '× ' + esc(item.name) + (item.size ? ' · Tamanho ' + esc(item.size) : '') + '</strong>' +
     ((item.options ?? []).length ? '<small>' + item.options.map(option => '+ ' + esc(option.name) + ' (' + money(option.price) + ')').join(' · ') + '</small>' : '') +
     '<small>' + money(item.price) + ' por unidade · ' + money(item.price * item.quantity) + '</small></li>').join('') + '</ul>' +
     (options.address ? '<p>' + icon('pin') + ' ' + esc(order.address) + '</p>' : '') +
+    (order.note ? '<div class="order-note"><strong>Observação do cliente</strong><p>' + esc(order.note) + '</p></div>' : '') +
     '<p>' + esc(payments[order.payment]) + '</p>';
   const customer = options.customer ? '<p class="order-customer"><strong>' + esc(order.customer_name || 'Cliente') + '</strong></p>' : '';
   const stages = ['placed','preparing','picked_up','delivered'];
@@ -142,8 +143,8 @@ export function orderCard(order, actions = '', options = {}) {
       new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(event.created_at)) + '</time></li>').join('') + '</ol>'
     : '';
   const body = progress + '<div class="order-body">' + details +
-    '<strong>' + money(order.subtotal + order.fee) +
-    '</strong></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '');
+    '<dl class="order-totals"><div><dt>Produtos</dt><dd>' + money(order.subtotal) + '</dd></div><div><dt>Entrega</dt><dd>' + money(order.fee) +
+    '</dd></div><div class="order-grand-total"><dt>Total</dt><dd>' + money(order.subtotal + order.fee) + '</dd></div></dl></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '');
   if (options.compact) {
     const detailsId = (options.customerView ? 'customer-order-' : 'merchant-order-') + order.id;
     const expanded = Boolean(options.expanded);
