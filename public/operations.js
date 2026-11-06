@@ -1,4 +1,5 @@
 import { percentage } from './invoices.js';
+import { createCommissionDashboard } from './admin-dashboard.js';
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, empty } from './shared.js';
 
@@ -250,17 +251,18 @@ export function storeMarkup(store, role, productsOnly = false) {
 }
 
 export function operations(page, context) {
+  const dashboard=createCommissionDashboard(context);
   let timer,searchTimer,drawer;
   let sequence = 0,clientPage = 0;
   let storeList = [],refreshing = false,search = '';
-  const section=()=>location.hash==='#clientes'?'clientes':'estabelecimentos';
+  const section=()=>['clientes','dashboard'].includes(location.hash.slice(1))?location.hash.slice(1):'estabelecimentos';
   function closeMenu(){if(drawer?.open)drawer.close();}
   function openMenu(){
     if(!drawer){drawer=document.createElement('dialog');drawer.id='admin-navigation';drawer.className='merchant-drawer';drawer.setAttribute('aria-labelledby','admin-menu-title');document.body.append(drawer);
       drawer.onclick=event=>{if(event.target===drawer||event.target.closest('[data-close-menu],a'))closeMenu();};
       drawer.addEventListener('close',()=> $('[data-admin-menu]')?.setAttribute('aria-expanded','false'));
     }
-    drawer.innerHTML='<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="admin-menu-title">Administração</h2></div><button class="icon-button" data-close-menu aria-label="Fechar menu">'+icon('close')+'</button></div><nav aria-label="Áreas da administração">'+[['estabelecimentos','Estabelecimentos','store'],['clientes','Clientes','person']].map(([key,label,symbol])=>'<a href="#'+key+'"'+(key===section()?' aria-current="page"':'')+'>'+icon(symbol)+label+'</a>').join('')+'</nav>';
+    drawer.innerHTML='<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="admin-menu-title">Administração</h2></div><button class="icon-button" data-close-menu aria-label="Fechar menu">'+icon('close')+'</button></div><nav aria-label="Áreas da administração">'+[['estabelecimentos','Estabelecimentos','store'],['clientes','Clientes','person'],['dashboard','Dashboard','grid']].map(([key,label,symbol])=>'<a href="#'+key+'"'+(key===section()?' aria-current="page"':'')+'>'+icon(symbol)+label+'</a>').join('')+'</nav>';
     drawer.showModal();$('[data-admin-menu]')?.setAttribute('aria-expanded','true');
   }
   async function refresh(force=false){
@@ -287,11 +289,13 @@ export function operations(page, context) {
     finally{if(revision===sequence)refreshing=false;}
   }
   function render(){
+    dashboard.stop();
     clearInterval(timer);clearTimeout(searchTimer);sequence++;refreshing=false;
     const user=context.user;
-    main.innerHTML='<div class="wrap page ops"><div class="ops-heading"><div class="ops-mark">'+icon('shield')+'</div><div><span class="overline accent">GESTÃO FLY DELIVERY</span><h1>'+(section()==='clientes'?'Clientes':'Estabelecimentos')+'</h1></div></div><div id="ops-body"></div></div>';
+    main.innerHTML='<div class="wrap page ops"><div class="ops-heading"><div class="ops-mark">'+icon('shield')+'</div><div><span class="overline accent">GESTÃO FLY DELIVERY</span><h1>'+({clientes:'Clientes',dashboard:'Dashboard',estabelecimentos:'Estabelecimentos'}[section()])+'</h1></div></div><div id="ops-body"></div></div>';
     const body=$('#ops-body');
     if(user?.role!=='admin'){closeMenu();body.innerHTML='<div class="panel">'+empty(user?'Acesso restrito':'Entre para continuar',user?'Seu perfil não tem acesso a esta área.':'Use o login e a senha da administração.','shield')+(user?'<button class="btn outline" data-switch-account>Trocar de conta</button>':'<button class="btn primary" data-signin>Entrar</button>')+'</div>';return;}
+    if(section()==='dashboard'){dashboard.mount(body);return;}
     body.innerHTML=(section()==='clientes'?'<label class="search-field admin-client-search">'+icon('search')+'<input id="client-search" type="search" maxlength="100" placeholder="Buscar cliente ou celular" value="'+esc(search)+'"></label>':'<section class="panel commission-settings"><h2>Comissão da plataforma</h2><p id="commission-current" class="muted">Carregando taxa…</p><form id="commission-form" class="form-stack"><label>Porcentagem sobre as vendas (%)<input type="number" name="percentage" min="0" max="100" step="0.01" required placeholder="Ex.: 10"></label><p class="muted">A confirmação aplica a taxa aos próximos pedidos entregues de todos os estabelecimentos. Comissões já registradas permanecem iguais. A entrega não entra na base de cálculo.</p>'+formEnd('Confirmar taxa global')+'</form><p id="commission-ready" class="muted"></p></section>')+'<p class="form-error" id="ops-error" role="alert"></p><section id="ops-stores"><p class="muted">Carregando…</p></section>';
     if($('#client-search'))$('#client-search').oninput=event=>{search=event.target.value;clientPage=0;clearTimeout(searchTimer);searchTimer=setTimeout(()=>refresh(true),250);};
     if($('#commission-form'))bindSubmit($('#commission-form'),async fields=>{
