@@ -127,7 +127,7 @@ export function customer(context) {
     if (error) {
       results.innerHTML = empty('Catálogo indisponível', error, 'store') + '<button class="btn outline" id="retry">Tentar novamente</button>';
       $('#retry').onclick = async () => { await loadCatalog(); render(); };
-    } else if (!loaded) results.innerHTML = '<p class="muted">Carregando restaurantes…</p>';
+    } else if (!loaded) results.innerHTML = '<p class="muted">Carregando estabelecimentos…</p>';
     else if (!matches.length) results.innerHTML = stores.length ? empty('Nenhum resultado','Experimente outro termo ou categoria.','search') : empty('Estabelecimentos em breve','As lojas cadastradas aparecerão aqui assim que forem publicadas.','store');
     else results.innerHTML = '<div class="restaurants">' + matches.map(storeCard).join('') + '</div>';
   }
@@ -136,7 +136,7 @@ export function customer(context) {
     main.innerHTML = '<div class="wrap home"><section class="hero" aria-labelledby="hero-title"><div class="hero-photo"></div>' +
       '<div class="hero-copy"><span class="hero-kicker"><span></span> DELIVERY DO SEU BAIRRO</span>' +
       '<h1 id="hero-title">A fome chama.<br><em>A gente leva.</em></h1><p>Descubra os melhores sabores da sua região e receba seus favoritos onde estiver.</p>' +
-      '<a class="btn hero-cta" href="#lojas">Explorar restaurantes ' + icon('arrow') + '</a></div>' +
+      '<a class="btn hero-cta" href="#lojas">Explorar estabelecimentos ' + icon('arrow') + '</a></div>' +
       '<div class="hero-stamp" aria-hidden="true">' + icon('bike') + '<span>DEU FOME?<br><strong>VAI DE FLY.</strong></span></div></section>' +
       '<section class="browse" aria-labelledby="categories-title"><div class="section-head"><div><span class="overline accent">BATEU AQUELA VONTADE?</span>' +
       '<h2 id="categories-title">O que vamos comer?</h2></div><label class="search-field">' + icon('search') +
@@ -145,8 +145,13 @@ export function customer(context) {
         '<button class="chip" data-category="' + esc(label) + '" aria-pressed="' + (label === category) + '">' + icon(symbol) + ' ' +
         esc(label) + '</button>').join('') + '</div></section>' +
       '<section id="restaurants" class="catalog" aria-labelledby="catalog-title"><div class="section-head"><div><span class="overline accent">VITRINE FLY</span>' +
-      '<h2 id="catalog-title">Restaurantes</h2></div><span class="muted" id="results-count"></span></div>' +
+      '<h2 id="catalog-title">Estabelecimentos</h2></div><span class="muted" id="results-count"></span></div>' +
       '<div id="results"></div></section></div>';
+    $('.hero-cta').onclick = event => {
+      if (route() !== 'lojas') return;
+      event.preventDefault();
+      $('.catalog').scrollIntoView({ behavior:'smooth' });
+    };
     $('#search').oninput = event => { search = event.target.value; catalogGrid(); };
     $('#categories').onclick = event => {
       const button = event.target.closest('[data-category]');
@@ -158,11 +163,11 @@ export function customer(context) {
     };
     catalogGrid();
     alignCategories(false);
-    if (view === 'lojas' && previousView !== view) requestAnimationFrame(() => $('.browse')?.scrollIntoView({ behavior:'smooth' }));
+    if (view === 'lojas' && previousView !== view) requestAnimationFrame(() => $('.catalog')?.scrollIntoView({ behavior:'smooth' }));
   }
 
   function storeView(store) {
-    main.innerHTML = '<div class="wrap page"><a class="back-link" href="#lojas">' + icon('back') + ' Restaurantes</a>' +
+    main.innerHTML = '<div class="wrap page"><a class="back-link" href="#lojas">' + icon('back') + ' Estabelecimentos</a>' +
       '<section class="store-banner"><img src="' + esc(storePhoto(store)) +
       '" alt=""><div><span class="photo-tag">' + esc(storeCategories(store).join(' · ')) + '</span><h1>' + esc(store.name) + '</h1><p>' + esc(store.description) +
       '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta + ' min</span><span>' + icon('bike') + ' ' +
@@ -384,7 +389,7 @@ export function customer(context) {
       const store = stores.find(candidate => candidate.id === view.slice(5));
       if (store) storeView(store);
       else main.innerHTML = '<div class="wrap page"><a class="back-link" href="#lojas">' + icon('back') +
-        ' Restaurantes</a>' + empty('Loja indisponível','Confira as outras lojas da região.','store') + '</div>';
+        ' Estabelecimentos</a>' + empty('Loja indisponível','Confira as outras lojas da região.','store') + '</div>';
     } else home(view);
     if (previousView !== view && view !== 'lojas') window.scrollTo(0,0);
     previousView = view;

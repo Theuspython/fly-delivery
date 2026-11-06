@@ -34,7 +34,7 @@ async function rpc(name: string, body: unknown, token: string) {
   throw new Failure(502,'O cadastro não pôde ser concluído. Tente novamente.');
 }
 
-const categories = new Set(['Hambúrguer','Pizza','Japonesa','Brasileira','Açaí','Outros']);
+const categories = new Set(['Hambúrguer','Pizza','Japonesa','Brasileira','Açaí','Telecerveja','Marmitex','Outros']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const validPassword = (value: unknown): value is string =>
   typeof value === 'string' && value.length >= 8 && new TextEncoder().encode(value).length <= 72;

@@ -3,7 +3,7 @@ export const main = $('#main');
 export const dialog = $('#dialog');
 export const categories = [
   ['Todas','grid'], ['Hambúrguer','burger'], ['Pizza','pizza'], ['Japonesa','sushi'],
-  ['Brasileira','bowl'], ['Açaí','cup'], ['Outros','spark']
+  ['Brasileira','bowl'], ['Açaí','cup'], ['Telecerveja','beer'], ['Marmitex','bowl'], ['Outros','spark']
 ];
 export const money = value => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(value / 100);
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -16,7 +16,7 @@ export const statuses = {
 export const payments = { pix_delivery:'Pix na entrega', card_delivery:'Cartão na entrega', cash_delivery:'Dinheiro na entrega' };
 export const fallbackImages = {
   Hambúrguer:'/assets/burger.webp', Pizza:'/assets/pizza.webp', Japonesa:'/assets/sushi.webp',
-  Brasileira:'/assets/bowl.webp', Açaí:'/assets/bowl.webp'
+  Brasileira:'/assets/bowl.webp', Açaí:'/assets/bowl.webp', Telecerveja:'/assets/icon.svg', Marmitex:'/assets/bowl.webp'
 };
 const icons = {
   pin:'<path d="M20 10c0 5-8 11-8 11s-8-6-8-11a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
@@ -32,6 +32,7 @@ const icons = {
   pizza:'<path d="M12 21 3 7a16 16 0 0 1 18 0L12 21ZM5 10a13 13 0 0 1 14 0m-8 2h.01m3 3h.01"/>',
   sushi:'<ellipse cx="12" cy="7" rx="8" ry="3.5"/><path d="M4 7v10c0 2 3.6 3.5 8 3.5s8-1.5 8-3.5V7m-9 0h2"/>',
   bowl:'<path d="M3 11h18a9 9 0 0 1-18 0Zm5 9h8M7 6l2 2m3-4v4m5-2-2 2"/>',
+  beer:'<path d="M5 8h11v12H5V8Zm11 2h2a3 3 0 0 1 0 6h-2M8 11v6m5-6v6"/><path d="M5 8a3 3 0 0 1 0-6 3 3 0 0 1 5-1 3 3 0 0 1 5 2 3 3 0 0 1 1 5"/>',
   cup:'<path d="M6 8h12l-2 13H8L6 8Zm-2 0h16m-8 0 2-5h4"/>',
   spark:'<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',

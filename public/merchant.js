@@ -24,7 +24,7 @@ const actions = order =>
   (order.status === 'picked_up' ? transitionButton(order,'delivered','Confirmar entrega') : '') +
   (['placed','preparing','ready','assigned'].includes(order.status) ? transitionButton(order,'cancelled','Cancelar','outline') : '');
 const queueStage = order => ['ready','assigned'].includes(order.status) ? 'preparing' : order.status;
-const queueLabels = {all:'Todos',placed:'Novos',preparing:'Em produção',picked_up:'Em entrega'};
+const queueLabels = {placed:'Novos',preparing:'Em produção',picked_up:'Em entrega'};
 const cards = (orders,active = false,openOrderId = null) => '<div class="order-grid merchant-order-grid">' + orders.map(order =>
   orderCard(order,active ? actions(order) : '',{
     address:true,progress:true,timeline:!active,compact:true,expanded:order.id === openOrderId
@@ -67,7 +67,7 @@ export function merchant(context) {
   let stores = [];
   let historyStatus = 'delivered';
   let openOrderId = null;
-  let queueFilter = 'all';
+  let queueFilter = 'placed';
   let activeOrders = [];
   let page = 0;
   let previousSection;
@@ -99,12 +99,12 @@ export function merchant(context) {
   }
 
   function queueMarkup() {
-    const visible = activeOrders.filter(order => queueFilter === 'all' || queueStage(order) === queueFilter);
+    const visible = activeOrders.filter(order => queueStage(order) === queueFilter);
     if (openOrderId && !visible.some(order => order.id === openOrderId)) openOrderId = null;
     return '<div class="merchant-queue-summary" role="group" aria-label="Filtrar pedidos por status">' +
       Object.entries(queueLabels).map(([status,label]) => '<button type="button" data-queue-filter="' + status +
         '" aria-pressed="' + (queueFilter === status) + '">' + label + ' <b>' +
-        activeOrders.filter(order => status === 'all' || queueStage(order) === status).length + '</b></button>').join('') + '</div>' +
+        activeOrders.filter(order => queueStage(order) === status).length + '</b></button>').join('') + '</div>' +
       (visible.length ? cards(visible,true,openOrderId) : '<div class="panel">' + empty(
         activeOrders.length ? 'Nenhum pedido neste status' : 'Nenhum pedido em andamento',
         activeOrders.length ? 'Escolha outro status para ver os demais pedidos.' :
@@ -167,7 +167,7 @@ export function merchant(context) {
       previousSection = null;
       stores = [];
       openOrderId = null;
-      queueFilter = 'all';
+      queueFilter = 'placed';
       activeOrders = [];
     }
     const currentSection = section();

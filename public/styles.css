@@ -61,7 +61,7 @@ p { line-height:1.5 }
 .hero-stamp .icon { width:25px; height:25px }
 .hero-stamp strong { color:var(--ink); font-size:.72rem }
 .browse { margin-top:41px; scroll-margin-top:110px }
-.catalog { margin-top:34px }
+.catalog { margin-top:34px; scroll-margin-top:110px }
 .section-head { display:flex; align-items:end; justify-content:space-between; gap:15px; margin-bottom:15px }
 .section-head h2 { margin-top:5px }
 .overline { display:block; color:var(--muted); font-size:.68rem; font-weight:800; letter-spacing:.15em; line-height:1.4 }
