@@ -17,7 +17,7 @@ export const statuses = {
 export const payments = { pix_delivery:'Pix na entrega', card_delivery:'Cartão na entrega', cash_delivery:'Dinheiro na entrega' };
 export const fallbackImages = {
   Hambúrguer:'/assets/burger.webp', Pizza:'/assets/pizza.webp', Japonesa:'/assets/sushi.webp',
-  Brasileira:'/assets/bowl.webp', Açaí:'/assets/bowl.webp', Telecerveja:'/assets/icon.svg', Marmitex:'/assets/bowl.webp'
+  Brasileira:'/assets/bowl.webp', Açaí:'/assets/bowl.webp', Telecerveja:'/assets/icon.svg?v=motoboy', Marmitex:'/assets/bowl.webp'
 };
 const icons = {
   pin:'<path d="M20 10c0 5-8 11-8 11s-8-6-8-11a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
@@ -124,6 +124,7 @@ export function profileAvatar(photo, name, scope = 'cliente', large = false) {
 export function orderCard(order, actions = '', options = {}) {
   const details = '<ul class="order-item-list">' + (order.items ?? []).map(item => '<li><strong>' + item.quantity + '× ' + esc(item.name) + (item.size ? ' · Tamanho ' + esc(item.size) : '') + '</strong>' +
     ((item.options ?? []).length ? '<small>' + item.options.map(option => '+ ' + esc(option.name) + ' (' + money(option.price) + ')').join(' · ') + '</small>' : '') +
+    ((item.meal_choices??[]).length?'<small class="meal-summary">'+item.meal_choices.map(group=>'<span><b>'+esc(group.name)+':</b> '+group.options.map(option=>esc(option.name)).join(', ')+'</span>').join('')+'<span>Montagem sem acréscimo</span></small>':'') +
     '<small>' + money(item.price) + ' por unidade · ' + money(item.price * item.quantity) + '</small></li>').join('') + '</ul>' +
     (options.address ? (options.hideAddress || order.address_hidden ? '<p class="muted order-address-hidden">' + icon('shield') + ' ' +
       (order.status==='cancelled' ? 'Endereço indisponível: pedido cancelado antes do aceite.' : 'O endereço será liberado após aceitar o pedido.') + '</p>' :

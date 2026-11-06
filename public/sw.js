@@ -1,5 +1,5 @@
-const cacheName = 'fly-delivery-shell-v22';
-const shell = ['/styles.css', '/app.js', '/install.js', '/shared.js', '/customer.js', '/catalog-search.js', '/operations.js', '/admin-dashboard.js', '/merchant.js', '/invoices.js', '/assets/icon.svg'];
+const cacheName = 'fly-delivery-shell-v23';
+const shell = ['/styles.css', '/app.js', '/install.js', '/shared.js', '/customer.js', '/catalog-search.js', '/operations.js', '/admin-dashboard.js', '/meal-choices.js', '/merchant.js', '/invoices.js', '/assets/icon.svg?v=motoboy'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)));
 });

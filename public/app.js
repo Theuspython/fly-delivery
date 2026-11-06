@@ -15,7 +15,7 @@ let checkedSession = page !== 'cliente';
 $('#manifest').href = '/' + page + '.webmanifest';
 
 function brand() {
-  return '<a class="brand" href="/' + page + '/" aria-label="Fly Delivery, início"><img src="/assets/icon.svg" alt="" width="41" height="41"><span>fly<span class="brand-accent">delivery</span><small>PEÇA BEM. COMA FELIZ.</small></span></a>';
+  return '<a class="brand" href="/' + page + '/" aria-label="Fly Delivery, início"><img src="/assets/icon.svg?v=motoboy" alt="" width="41" height="41"><span>fly<span class="brand-accent">delivery</span><small>PEÇA BEM. COMA FELIZ.</small></span></a>';
 }
 function header() {
   const clientReady = page === 'cliente' && profile;

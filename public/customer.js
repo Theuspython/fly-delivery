@@ -1,6 +1,7 @@
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, sortCategories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
 import { searchCatalog } from './catalog-search.js';
+import { mealGroups,resolveMealSelection,mealChoicesMarkup } from './meal-choices.js';
 
 function stored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
@@ -21,6 +22,7 @@ export function customer(context) {
   let menuCategory = 'Todas';
   const optionDrafts = new Map();
   const sizeDrafts = new Map();
+  const mealDrafts = new Map();
   let note = '';
   const cartKey = 'fd-cart:' + context.user.id;
   const requestKey = 'fd-request:' + context.user.id;
@@ -134,9 +136,10 @@ export function customer(context) {
 
   const optionIds = (product) => [...(optionDrafts.get(product.id) ?? [])].sort();
   const productSize = product => (product.sizes ?? []).find(size=>size.name===sizeDrafts.get(product.id)) ?? product.sizes?.[0];
-  const lineKey = (product,ids=[],size='') => product.id + (ids.length || size ? ':' + [...ids].sort().join(',') : '') + (size ? ':' + size : '');
+  const mealSelection=(product,size=productSize(product)?.name??'')=>mealDrafts.get(product.id+':'+size)??[];
+  const lineKey = (product,ids=[],size='',meals=[]) => product.id + (ids.length || size || meals.length ? ':' + [...ids].sort().join(',') : '') + (size || meals.length ? ':' + size : '') + (meals.length?':'+encodeURIComponent(JSON.stringify(meals)):'');
   function cartLine(store,key) {
-    const [id,selection='',sizeName=''] = key.split(':');
+    const [id,selection='',sizeName='',mealPart=''] = key.split(':');
     const product = store?.products.find(product=>product.id===id);
     if (!product) return null;
     const size = (product.sizes ?? []).find(size=>size.name===sizeName);
@@ -145,10 +148,14 @@ export function customer(context) {
     const ids = selection ? selection.split(',') : [];
     const options = ids.map(id=>(product.options ?? []).find(option=>option.id===id));
     if (options.some(option=>!option)) return null;
-    return {key,product,options,size: size?.name ?? '',basePrice,quantity:cart.items[key],price:basePrice+options.reduce((sum,option)=>sum+option.price,0)};
+    let meals;try{meals=resolveMealSelection(product,sizeName,mealPart?JSON.parse(decodeURIComponent(mealPart)):[]);}catch{return null;}
+    if(!meals.valid)return null;
+    return {key,product,options,mealSelections:meals.selections,mealGroups:meals.groups,size: size?.name ?? '',basePrice,quantity:cart.items[key],price:basePrice+options.reduce((sum,option)=>sum+option.price,0)};
   }
-  function setItem(store, product, increment, ids = optionIds(product), size = productSize(product)?.name ?? '') {
-    const key = lineKey(product,ids,size);
+  function setItem(store, product, increment, ids = optionIds(product), size = productSize(product)?.name ?? '', selection = mealSelection(product,size)) {
+    const meals=resolveMealSelection(product,size,selection);
+    if(!meals.valid){toast(meals.reason);return;}
+    const key = lineKey(product,ids,size,meals.selections);
     if (increment < 0 && (cart.store !== store.id || !cart.items[key])) return;
     if (cart.store && cart.store !== store.id) {
       if (!window.confirm('Você tem itens de outra loja. Deseja começar um novo carrinho?')) return;
@@ -265,15 +272,21 @@ export function customer(context) {
       alignCategories(true,$('#menu-categories'));
     };
     $('#menu-products').onclick = event => {
+      const clear=event.target.closest('[data-clear-meal]');
+      if(clear){const card=clear.closest('[data-menu-product]'),product=store.products.find(p=>p.id===card.dataset.menuProduct),size=productSize(product)?.name??'';mealDrafts.set(product.id+':'+size,mealSelection(product,size).filter(group=>group.group_id!==clear.dataset.clearMeal));syncProductQuantities(store);return;}
       const button = event.target.closest('[data-product]');
       if (button) setItem(store,store.products.find(product => product.id === button.dataset.product),Number(button.dataset.menuDelta));
     };
     $('#menu-products').onchange = event => {
-      const input = event.target.closest('[data-option],[data-size]');
+      const input = event.target.closest('[data-option],[data-size],[data-meal-option]');
       if (!input) return;
       const card = input.closest('[data-menu-product]');
       if (input.hasAttribute('data-size')) sizeDrafts.set(card.dataset.menuProduct,input.value);
-      else optionDrafts.set(card.dataset.menuProduct,[...card.querySelectorAll('[data-option]:checked')].map(input=>input.dataset.option));
+      else if(input.hasAttribute('data-option')) optionDrafts.set(card.dataset.menuProduct,[...card.querySelectorAll('[data-option]:checked')].map(input=>input.dataset.option));
+      else {
+        const product=store.products.find(p=>p.id===card.dataset.menuProduct),size=productSize(product)?.name??'';
+        mealDrafts.set(product.id+':'+size,mealGroups(product,size).map(group=>({group_id:group.id,option_ids:[...card.querySelectorAll('[data-meal-option]:checked')].filter(input=>input.dataset.mealGroup===group.id).map(input=>input.dataset.mealOption)})).filter(group=>group.option_ids.length));
+      }
       syncProductQuantities(store);
     };
     menuGrid(store);
@@ -289,7 +302,7 @@ export function customer(context) {
       ((product.sizes ?? []).length ? 'A partir de ' : '') + money(product.price) + '</strong></div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
       '</div>' + ((product.sizes ?? []).length ? '<fieldset class="product-sizes"><legend>Escolha o tamanho</legend><div>' + product.sizes.map(size=>
         '<label><input type="radio" name="size-' + esc(product.id) + '" data-size value="' + esc(size.name) + '"' + (productSize(product)?.name===size.name ? ' checked' : '') + '><span><b>' + esc(size.name) + '</b><small>' + money(size.price) + '</small></span></label>').join('') + '</div></fieldset>' : '') +
-      ((product.options ?? []).length ? '<details class="product-options"><summary>Opcionais <span>' + product.options.length + ' disponíveis</span></summary><div class="option-choices">' +
+      '<div data-meal-choices></div>' + ((product.options ?? []).length ? '<details class="product-options"><summary>Opcionais <span>' + product.options.length + ' disponíveis</span></summary><div class="option-choices">' +
         product.options.map(option=>'<label><input type="checkbox" data-option="' + esc(option.id) + '"' + (optionIds(product).includes(option.id)?' checked':'') + '><span>' + esc(option.name) + '</span><strong>+ ' + money(option.price) + '</strong></label>').join('') +
         '</div></details>' : '') + '<p class="configured-price" data-configured-price aria-live="polite"></p><div class="product-quantity"><button class="icon-button" data-product="' + esc(product.id) + '" data-menu-delta="-1" aria-label="Diminuir ' + esc(product.name) + '">' +
       icon('minus') + '</button><span><output aria-label="Quantidade de ' + esc(product.name) + '" data-product-quantity>0</output> no carrinho</span>' +
@@ -305,11 +318,18 @@ export function customer(context) {
       const product = store.products.find(product=>product.id===card.dataset.menuProduct);
       const ids = optionIds(product);
       const size = productSize(product);
+      const meals=resolveMealSelection(product,size?.name??'',mealSelection(product));
+      const mealContainer=$('[data-meal-choices]',card),mealMarkup=mealChoicesMarkup(product,size?.name??'',mealSelection(product));
+      if(mealContainer.innerHTML!==mealMarkup){
+        const focused=document.activeElement?.dataset.mealOption;mealContainer.innerHTML=mealMarkup;
+        if(focused)mealContainer.querySelector('[data-meal-option="'+focused+'"]')?.focus({preventScroll:true});
+      }
       const basePrice = size?.price ?? product.price;
-      const quantity = cart.store === store.id ? cart.items[lineKey(product,ids,size?.name)] ?? 0 : 0;
+      const quantity = meals.valid && cart.store === store.id ? cart.items[lineKey(product,ids,size?.name,meals.selections)] ?? 0 : 0;
       const extra = (product.options ?? []).filter(option=>ids.includes(option.id)).reduce((sum,option)=>sum+option.price,0);
       $('[data-configured-price]',card).textContent = size || ids.length ? (size ? 'Tamanho ' + size.name + (ids.length ? ' com opcionais' : '') + ': ' : 'Unidade com opcionais: ') + money(basePrice+extra) : '';
       for (const input of card.querySelectorAll('[data-option],[data-size]')) input.disabled = !store.is_open;
+      if(!store.is_open)for(const input of card.querySelectorAll('[data-meal-option],[data-clear-meal]'))input.disabled=true;
       $('[data-product-quantity]',card).textContent = quantity;
       $('[data-menu-delta="-1"]',card).disabled = quantity === 0;
       $('[data-menu-delta="1"]',card).disabled = !store.is_open || quantity >= 25;
@@ -391,6 +411,7 @@ export function customer(context) {
         '<div class="split"><section class="panel"><h2>' + esc(store.name) + '</h2><div class="cart-items">' + products.map(line =>
           '<div class="cart-row"><div><strong>' + esc(line.product.name) + (line.size ? ' · Tamanho ' + esc(line.size) : '') + '</strong>' +
           (line.options.length ? '<p class="cart-option-list">' + line.options.map(option=>'+ ' + esc(option.name) + ' (' + money(option.price) + ')').join('<br>') + '</p>' : '') +
+          (line.mealGroups.length?'<p class="meal-summary">'+line.mealGroups.map(group=>'<span><b>'+esc(group.name)+':</b> '+group.options.map(option=>esc(option.name)).join(', ')+'</span>').join('')+'<small>Montagem sem acréscimo</small></p>':'') +
           '<p>' + money(line.price) + ' por unidade · ' + money(line.price * line.quantity) + '</p></div>' +
           '<div class="stepper"><button class="icon-button" data-id="' + esc(line.key) + '" data-delta="-1" aria-label="Diminuir ' +
           esc(line.product.name) + '">' + icon('minus') + '</button><b>' + line.quantity + '</b><button class="icon-button" data-id="' +
@@ -413,7 +434,7 @@ export function customer(context) {
       const button = event.target.closest('[data-delta]');
       if (button) {
         const line = products.find(line=>line.key===button.dataset.id);
-        setItem(store,line.product,Number(button.dataset.delta),line.options.map(option=>option.id),line.size);
+        setItem(store,line.product,Number(button.dataset.delta),line.options.map(option=>option.id),line.size,line.mealSelections);
       }
     };
     $('[data-address]').onclick = () => addressDialog(usePrimary && Boolean(primaryAddress));
@@ -437,10 +458,10 @@ export function customer(context) {
       try {
         await command('place', { store_id:store.id, request_id:requestId, address:chosen.text,
           payment:fields.get('payment'), note:fields.get('note'), fee:store.fee, items:products.map(line => ({
-            id:line.product.id, quantity:line.quantity, price:line.basePrice, size:line.size || null, options:line.options.map(option=>({id:option.id,price:option.price}))
+            id:line.product.id, quantity:line.quantity, price:line.basePrice, size:line.size || null, options:line.options.map(option=>({id:option.id,price:option.price})),meal_choices:line.mealSelections
           })) });
       } catch (err) {
-        if (err.message.includes('mudaram') || err.message.includes('cardápio') || err.message.includes('opcionais')) {
+        if (err.message.includes('mudaram') || err.message.includes('cardápio') || err.message.includes('opcionais') || err.message.includes('escolhas')) {
           await loadCatalog();
           render();
           toast(err.message);

@@ -68,6 +68,10 @@ O cadastro/edição permite ativar **O item possui tamanhos diferentes**, marcar
 
 O cliente pode escrever uma observação opcional de até 500 caracteres antes de confirmar o pedido. A observação aparece nos detalhes para o cliente e o estabelecimento. Os detalhes também separam Produtos, Entrega e Total. Os filtros Novos, Em produção e Em entrega compartilham as cores de status dos cards.
 
+Produtos na categoria **Marmitex** podem ter **Montagem do Marmitex**, com grupos livres criados pela loja (até 8 grupos e 20 opções por grupo). A loja informa nomes, opções, se a escolha é obrigatória e os limites por tamanho: por exemplo, uma carne no P e até duas no G, ou um grupo apenas para G. Produtos sem tamanhos usam a regra de tamanho único. O limite é de 1 a 5 escolhas por grupo/tamanho. Nenhum nome ou alimento é pré-cadastrado. A montagem é gratuita e separada dos opcionais pagos; o preço segue o tamanho mais os opcionais pagos. Combinações distintas ficam separadas no carrinho, e o banco valida obrigatoriedade, limites, tamanho e opções disponíveis antes de gravar o pedido. Os nomes das escolhas são preservados no histórico e aparecem para o cliente e a cozinha, mesmo após mudanças no cardápio.
+
+O ícone com motoboy usa a arte SVG fornecida, mantendo os espaços da marca e os tamanhos anteriores: SVG de 512 px e PNGs de 192 e 512 px. Os três manifestos preservam identidade, escopo e dimensões. As URLs dos ícones têm versão para atualizar o cache.
+
 ## Faturas Fly Delivery
 
 O menu do estabelecimento começa por **Faturas Fly Delivery**, seguido de pedidos, produtos e relatórios. O menu da administração reúne **Estabelecimentos** e **Clientes**. A administração pode suspender ou reativar uma loja; a suspensão oculta a loja da vitrine e bloqueia novos pedidos, mantendo o acesso às faturas e o atendimento dos pedidos já recebidos.
