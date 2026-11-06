@@ -137,13 +137,39 @@ export function productForm(store, product, done) {
     '</select></label><label>Descrição<textarea name="description" rows="3" maxlength="500">' + esc(product?.description) +
     '</textarea></label><label>Preço (R$)<input name="price" type="number" min="0.01" max="10000" step="0.01" required value="' +
     (product ? product.price / 100 : '') + '"></label><label>Foto do produto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
+    '<fieldset class="optional-editor"><legend>Opcionais do produto</legend><label class="check"><input type="checkbox" name="has_options"' +
+    ((product?.options ?? []).length ? ' checked' : '') + '> Este produto tem opcionais</label><div data-options-editor><p class="muted">O cliente pode escolher um ou mais adicionais. O valor é somado por unidade do produto.</p><div data-option-rows></div><button type="button" class="btn outline" data-add-option>Adicionar opcional</button></div></fieldset>' +
     (photo ? '<button class="text-button" type="button" data-remove-photo>Remover foto atual</button>' : '') +
     '<p class="muted">JPG, PNG ou WebP, até 3 MB.</p><label class="check"><input name="active" type="checkbox"' +
     (product?.active !== false ? ' checked' : '') + '> Disponível no cardápio</label>' + formEnd('Salvar produto') + '</form>');
+  const editor = $('[data-options-editor]',el);
+  const rows = $('[data-option-rows]',el);
+  const enabled = $('[name=has_options]',el);
+  function optionRow(option = {}) {
+    const row = document.createElement('div');
+    row.className = 'optional-editor-row';
+    row.dataset.optionId = option.id || crypto.randomUUID();
+    row.innerHTML = '<label>Nome do opcional<input data-option-name required maxlength="80" value="' + esc(option.name) + '" placeholder="Ex. Ovo"></label>' +
+      '<label>Valor (R$)<input data-option-price type="number" min="0" max="10000" step="0.01" required value="' + (option.price != null ? option.price/100 : '') + '" placeholder="0,00"></label>' +
+      '<button type="button" class="icon-button" data-remove-option aria-label="Remover opcional">' + icon('close') + '</button>';
+    rows.append(row);
+    $('[data-add-option]',el).disabled = rows.children.length >= 20;
+  }
+  function toggleOptions() {
+    editor.hidden = !enabled.checked;
+    for (const input of rows.querySelectorAll('input')) input.disabled = !enabled.checked;
+  }
+  for (const option of product?.options ?? []) optionRow(option);
+  enabled.onchange = () => { if (enabled.checked && !rows.children.length) optionRow(); toggleOptions(); };
+  $('[data-add-option]',el).onclick = () => { if (rows.children.length < 20) { optionRow(); rows.lastElementChild.querySelector('input').focus(); } };
+  rows.onclick = event => { const remove = event.target.closest('[data-remove-option]'); if (remove) { remove.closest('.optional-editor-row').remove(); $('[data-add-option]',el).disabled = false; } };
+  toggleOptions();
   const remove = $('[data-remove-photo]',el);
   if (remove) remove.onclick = () => { photo = null; remove.textContent = 'Foto marcada para remoção'; remove.disabled = true; };
   bindSubmit($('#product-form',el), async data => {
     if (!allowedCategories.includes(data.get('category'))) throw new Error('Selecione uma das categorias do estabelecimento.');
+    const options = enabled.checked ? [...rows.children].map(row=>({id:row.dataset.optionId,name:$('[data-option-name]',row).value.trim(),price:($('[data-option-price]',row).value.trim() ? Math.round(Number($('[data-option-price]',row).value)*100) : NaN)})) : [];
+    if (enabled.checked && (!options.length || options.some(option=>!option.name || !Number.isInteger(option.price) || option.price<0 || option.price>1000000))) throw new Error('Preencha o nome e o valor de cada opcional.');
     const file = data.get('photo');
     if (file?.size && file !== selectedFile) {
       if (file.size > 3 * 1024 * 1024) throw new Error('A foto deve ter até 3 MB.');
@@ -151,7 +177,7 @@ export function productForm(store, product, done) {
       selectedFile = file;
     }
     await command('save_product', { id:product?.id, store_id:store.id, name:data.get('name'), category:data.get('category'), description:data.get('description'),
-      price:Math.round(Number(data.get('price'))*100), active:data.has('active'), image:photo });
+      price:Math.round(Number(data.get('price'))*100), active:data.has('active'), image:photo, options });
     el.close();
     toast('Produto salvo.');
     await done();

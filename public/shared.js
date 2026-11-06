@@ -2,9 +2,10 @@ export const $ = (selector, root = document) => root.querySelector(selector);
 export const main = $('#main');
 export const dialog = $('#dialog');
 export const categories = [
-  ['Todas','grid'], ['Hambúrguer','burger'], ['Pizza','pizza'], ['Japonesa','sushi'],
-  ['Brasileira','bowl'], ['Açaí','cup'], ['Telecerveja','beer'], ['Marmitex','bowl'], ['Outros','spark']
+  ['Todas','grid'], ['Hambúrguer','burger'], ['Pizza','pizza'], ['Marmitex','bowl'],
+  ['Açaí','cup'], ['Telecerveja','beer'], ['Japonesa','sushi'], ['Brasileira','bowl'], ['Outros','spark']
 ];
+export const sortCategories = values => [...values].sort((a,b) => categories.findIndex(([name])=>name===a)-categories.findIndex(([name])=>name===b));
 export const money = value => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(value / 100);
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
@@ -121,7 +122,9 @@ export function profileAvatar(photo, name, scope = 'cliente', large = false) {
 }
 
 export function orderCard(order, actions = '', options = {}) {
-  const details = '<p>' + (order.items ?? []).map(item => item.quantity + '× ' + esc(item.name)).join(' · ') + '</p>' +
+  const details = '<ul class="order-item-list">' + (order.items ?? []).map(item => '<li><strong>' + item.quantity + '× ' + esc(item.name) + '</strong>' +
+    ((item.options ?? []).length ? '<small>' + item.options.map(option => '+ ' + esc(option.name) + ' (' + money(option.price) + ')').join(' · ') + '</small>' : '') +
+    '<small>' + money(item.price) + ' por unidade · ' + money(item.price * item.quantity) + '</small></li>').join('') + '</ul>' +
     (options.address ? '<p>' + icon('pin') + ' ' + esc(order.address) + '</p>' : '') +
     '<p>' + esc(payments[order.payment]) + '</p>';
   const customer = options.customer ? '<p class="order-customer"><strong>' + esc(order.customer_name || 'Cliente') + '</strong></p>' : '';

@@ -67,7 +67,7 @@ p { line-height:1.5 }
 .overline { display:block; color:var(--muted); font-size:.68rem; font-weight:800; letter-spacing:.15em; line-height:1.4 }
 .overline.accent { color:var(--orange) }
 .search-field { display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:0 12px; min-height:42px; color:var(--muted) }
-.search-field input { width:178px; border:0; background:transparent; color:var(--ink); outline:none; font-size:.84rem }
+.search-field input { width:178px; border:0; background:transparent; color:var(--ink); outline:none; font-size:16px }
 .search-field:focus-within { outline:2px solid var(--orange) }
 .chips { display:flex; gap:9px; overflow-x:auto; padding:3px 3px 8px; margin-left:-3px; scrollbar-width:thin }
 .chip { display:inline-flex; align-items:center; justify-content:center; gap:8px; white-space:nowrap; border:1px solid var(--line); border-radius:11px; min-height:44px; padding:8px 14px; background:var(--surface); color:var(--ink); font-weight:700; font-size:.86rem }
@@ -381,8 +381,39 @@ p { line-height:1.5 }
 .install-steps li { padding-left:5px; line-height:1.6; margin-bottom:13px; }
 .install-note { margin-top:14px; font-size:.85rem; }
 
-.store-category-tags { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:7px; }
-.store-category-tags > span { display:inline-block; padding:3px 6px; border-radius:6px; color:#85533e; background:#fbefe7; font-size:.65rem; font-weight:700; line-height:1.25; }
+.store-category-tags { display:flex; flex-wrap:nowrap; gap:4px; margin-bottom:7px; max-width:100%; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; overscroll-behavior-x:contain; -webkit-overflow-scrolling:touch; }
+.store-category-tags::-webkit-scrollbar { display:none; }
+.store-category-tags:focus-visible { outline:2px solid var(--orange); outline-offset:2px; }
+.store-category-tags > span { display:inline-block; flex:none; white-space:nowrap; padding:3px 6px; border-radius:6px; color:#85533e; background:#fbefe7; font-size:.65rem; font-weight:700; line-height:1.25; }
 .store-category-tags-banner > span { color:#fff4e9; background:#ffffff1c; border:1px solid #ffffff24; }
 .menu-count { font-size:.82rem; margin:4px 0 12px; }
 .menu-empty { grid-column:1/-1; }
+
+.restaurant-heading h3,.restaurant-content p { overflow-wrap:anywhere; }
+.store-banner > div { min-width:0; width:100%; }
+.product { min-width:0; }
+.product-content h3,.product-content p { overflow-wrap:anywhere; word-break:normal; }
+.product-content p { white-space:pre-wrap; }
+.product-content img { flex:none; max-width:28%; }
+.product-options { min-width:0; border-top:1px solid var(--line); padding-top:10px; }
+.product-options summary { cursor:pointer; color:var(--ink); font-size:.88rem; font-weight:700; }
+.product-options summary span { font-size:.75rem; font-weight:400; color:var(--muted); margin-left:6px; }
+.option-choices { display:grid; gap:9px; padding-top:12px; }
+.option-choices label { display:flex; align-items:center; gap:8px; font-size:.85rem; cursor:pointer; }
+.option-choices input { width:18px; height:18px; flex:none; accent-color:var(--orange); }
+.option-choices label span { flex:1; min-width:0; overflow-wrap:anywhere; }
+.option-choices strong { flex:none; font-size:.8rem; }
+.configured-price:empty { display:none; }
+.product .configured-price { font-size:.82rem; color:var(--orange); margin:0; }
+.optional-editor { min-width:0; border:1px solid var(--line); border-radius:12px; padding:12px; }
+.optional-editor legend { font-size:.9rem; font-weight:700; padding:0 4px; }
+.optional-editor-row { display:grid; grid-template-columns:minmax(0,1fr) 100px 38px; align-items:end; gap:8px; margin:12px 0; }
+.optional-editor-row label { min-width:0; }
+.optional-editor-row .icon-button { margin-bottom:2px; }
+.order-item-list { list-style:none; padding:0; margin:0 0 12px; display:grid; gap:10px; }
+.order-item-list li { overflow-wrap:anywhere; }
+.order-item-list small { display:block; color:var(--muted); font-size:.8rem; margin-top:3px; }
+.cart-row > div:first-child { min-width:0; }
+.cart-row .stepper { flex:none; }
+.restaurant-content p.search-matches { min-height:0; color:#85533e; font-size:.75rem; }
+@media(max-width:380px) { .optional-editor-row { grid-template-columns:minmax(0,1fr) 82px 34px; gap:5px; } }

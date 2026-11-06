@@ -1,13 +1,13 @@
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
-  categories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
+  categories, sortCategories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
+import { searchCatalog } from './catalog-search.js';
 
 function stored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
   catch { return fallback; }
 }
-const normalize = value => value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
 const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
-const storeCategories = store => store.categories ?? [store.category];
+const storeCategories = store => sortCategories(store.categories ?? [store.category]);
 const storePhoto = store => store.image || imageFor(store,store.products.find(product => product.image));
 
 export function customer(context) {
@@ -19,6 +19,7 @@ export function customer(context) {
   let search = '';
   let menuStore = null;
   let menuCategory = 'Todas';
+  const optionDrafts = new Map();
   const cartKey = 'fd-cart:' + context.user.id;
   const requestKey = 'fd-request:' + context.user.id;
   let cart = stored(cartKey, { store:null, items:{} });
@@ -82,6 +83,9 @@ export function customer(context) {
     if (loading) return loading;
     loading = api('catalog').then(list => {
       stores = list;
+      for (const store of stores) for (const product of store.products) {
+        if (optionDrafts.has(product.id)) optionDrafts.set(product.id,optionIds(product).filter(id=>(product.options ?? []).some(option=>option.id===id)));
+      }
       error = null;
       loaded = true;
     }).catch(err => { error = err.message; }).finally(() => { loading = null; });
@@ -125,21 +129,33 @@ export function customer(context) {
     updateHeader();
   }
 
-  function setItem(store, product, increment) {
-    if (increment < 0 && (cart.store !== store.id || !cart.items[product.id])) return;
+  const optionIds = (product) => [...(optionDrafts.get(product.id) ?? [])].sort();
+  const lineKey = (product,ids=[]) => product.id + (ids.length ? ':' + [...ids].sort().join(',') : '');
+  function cartLine(store,key) {
+    const [id,selection=''] = key.split(':');
+    const product = store?.products.find(product=>product.id===id);
+    if (!product) return null;
+    const ids = selection ? selection.split(',') : [];
+    const options = ids.map(id=>(product.options ?? []).find(option=>option.id===id));
+    if (options.some(option=>!option)) return null;
+    return {key,product,options,quantity:cart.items[key],price:product.price+options.reduce((sum,option)=>sum+option.price,0)};
+  }
+  function setItem(store, product, increment, ids = optionIds(product)) {
+    const key = lineKey(product,ids);
+    if (increment < 0 && (cart.store !== store.id || !cart.items[key])) return;
     if (cart.store && cart.store !== store.id) {
       if (!window.confirm('Você tem itens de outra loja. Deseja começar um novo carrinho?')) return;
       cart = { store:store.id, items:{} };
       address = null;
       usePrimary = true;
     }
-    const quantity = (cart.items[product.id] ?? 0) + increment;
-    if (quantity > 25) return toast('Você pode adicionar até 25 unidades por item.');
+    const quantity = (cart.items[key] ?? 0) + increment;
+    if (quantity > 25) return toast('Você pode adicionar até 25 unidades por combinação.');
     if (quantity > 0) {
-      if (!cart.items[product.id] && Object.keys(cart.items).length >= 30) return toast('Seu carrinho já tem 30 tipos de item.');
+      if (!cart.items[key] && Object.keys(cart.items).length >= 30) return toast('Seu carrinho já tem 30 combinações de itens.');
       cart.store = store.id;
-      cart.items[product.id] = quantity;
-    } else delete cart.items[product.id];
+      cart.items[key] = quantity;
+    } else delete cart.items[key];
     if (!Object.keys(cart.items).length) { cart.store = null; address = null; usePrimary = true; }
     saveCart();
     if (route().startsWith('loja/')) syncProductQuantities(store);
@@ -148,7 +164,7 @@ export function customer(context) {
   }
 
   function categoryTags(store,banner = false) {
-    return '<div class="store-category-tags' + (banner ? ' store-category-tags-banner' : '') + '">' +
+    return '<div' + (banner ? ' tabindex="0"' : '') + ' role="group" aria-label="Categorias do estabelecimento, deslize para ver mais" class="store-category-tags' + (banner ? ' store-category-tags-banner' : '') + '">' +
       storeCategories(store).map(label => '<span>' + esc(label) + '</span>').join('') + '</div>';
   }
 
@@ -159,12 +175,14 @@ export function customer(context) {
     ...(store.products.some(product=>!productCategory(store,product)) ? [['uncategorized','spark']] : [])
   ];
 
-  function storeCard(store, index) {
+  function storeCard(store, index, matchingProducts = []) {
     return '<a class="restaurant-card" href="#loja/' + esc(store.id) + '"><div class="restaurant-photo"><img src="' +
       esc(storePhoto(store)) + '" alt="" loading="' + (index === 0 ? 'eager' : 'lazy') +
       '">' + (!store.is_open ? '<span class="closed-tag">Fechado</span>' : '') +
       '</div><div class="restaurant-content">' + categoryTags(store) + '<div class="restaurant-heading"><h3>' + esc(store.name) + '</h3><span class="restaurant-arrow">' + icon('arrow') +
-      '</span></div><p>' + esc(store.description) + '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta +
+      '</span></div><p>' + esc(store.description) + '</p>' + (matchingProducts.length ? '<p class="search-matches">No cardápio: ' +
+      matchingProducts.slice(0,2).map(product=>esc(product.name)).join(' · ') + (matchingProducts.length>2 ? '…' : '') + '</p>' : '') +
+      '<div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta +
       ' min</span><span>' + icon('bike') + ' ' + (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></a>';
   }
 
@@ -172,15 +190,14 @@ export function customer(context) {
     const results = $('#results');
     const count = $('#results-count');
     if (!results) return;
-    const matches = stores.filter(store => (category === 'Todas' || storeCategories(store).includes(category)) &&
-      normalize([store.name,...storeCategories(store),...store.products.map(p => p.name)].join(' ')).includes(normalize(search.trim())));
+    const matches = searchCatalog(stores,category,search);
     count.textContent = loaded ? matches.length + (matches.length === 1 ? ' estabelecimento' : ' estabelecimentos') : '';
     if (error) {
       results.innerHTML = empty('Catálogo indisponível', error, 'store') + '<button class="btn outline" id="retry">Tentar novamente</button>';
       $('#retry').onclick = async () => { await loadCatalog(); render(); };
     } else if (!loaded) results.innerHTML = '<p class="muted">Carregando estabelecimentos…</p>';
     else if (!matches.length) results.innerHTML = stores.length ? empty('Nenhum resultado','Experimente outro termo ou categoria.','search') : empty('Estabelecimentos em breve','As lojas cadastradas aparecerão aqui assim que forem publicadas.','store');
-    else results.innerHTML = '<div class="restaurants">' + matches.map(storeCard).join('') + '</div>';
+    else results.innerHTML = '<div class="restaurants">' + matches.map((match,index)=>storeCard(match.store,index,match.products)).join('') + '</div>';
   }
 
   function home(view) {
@@ -191,7 +208,7 @@ export function customer(context) {
       '<div class="hero-stamp" aria-hidden="true">' + icon('bike') + '<span>DEU FOME?<br><strong>VAI DE FLY.</strong></span></div></section>' +
       '<section class="browse" aria-labelledby="categories-title"><div class="section-head"><div><span class="overline accent">BATEU AQUELA VONTADE?</span>' +
       '<h2 id="categories-title">O que vamos comer?</h2></div><label class="search-field">' + icon('search') +
-      '<input id="search" type="search" value="' + esc(search) + '" placeholder="Busque loja ou prato" aria-label="Busque loja ou prato"></label></div>' +
+      '<input id="search" type="search" maxlength="100" value="' + esc(search) + '" placeholder="Busque loja ou prato" aria-label="Busque loja ou prato"></label></div>' +
       '<div id="categories" class="chips" aria-label="Filtrar categoria">' + categories.map(([label, symbol]) =>
         '<button class="chip" data-category="' + esc(label) + '" aria-pressed="' + (label === category) + '">' + icon(symbol) + ' ' +
         esc(label) + '</button>').join('') + '</div></section>' +
@@ -243,6 +260,13 @@ export function customer(context) {
       const button = event.target.closest('[data-product]');
       if (button) setItem(store,store.products.find(product => product.id === button.dataset.product),Number(button.dataset.menuDelta));
     };
+    $('#menu-products').onchange = event => {
+      const input = event.target.closest('[data-option]');
+      if (!input) return;
+      const card = input.closest('[data-menu-product]');
+      optionDrafts.set(card.dataset.menuProduct,[...card.querySelectorAll('[data-option]:checked')].map(input=>input.dataset.option));
+      syncProductQuantities(store);
+    };
     menuGrid(store);
     alignCategories(false,$('#menu-categories'));
   }
@@ -254,7 +278,9 @@ export function customer(context) {
     $('#menu-products').innerHTML = products.length ? products.map(product =>
       '<article class="product" data-menu-product="' + esc(product.id) + '"><div class="product-content"><div><h3>' + esc(product.name) + '</h3><p>' + esc(product.description) + '</p><strong>' +
       money(product.price) + '</strong></div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
-      '</div><div class="product-quantity"><button class="icon-button" data-product="' + esc(product.id) + '" data-menu-delta="-1" aria-label="Diminuir ' + esc(product.name) + '">' +
+      '</div>' + ((product.options ?? []).length ? '<details class="product-options"><summary>Opcionais <span>' + product.options.length + ' disponíveis</span></summary><div class="option-choices">' +
+        product.options.map(option=>'<label><input type="checkbox" data-option="' + esc(option.id) + '"' + (optionIds(product).includes(option.id)?' checked':'') + '><span>' + esc(option.name) + '</span><strong>+ ' + money(option.price) + '</strong></label>').join('') +
+        '</div></details>' : '') + '<p class="configured-price" data-configured-price aria-live="polite"></p><div class="product-quantity"><button class="icon-button" data-product="' + esc(product.id) + '" data-menu-delta="-1" aria-label="Diminuir ' + esc(product.name) + '">' +
       icon('minus') + '</button><span><output aria-label="Quantidade de ' + esc(product.name) + '" data-product-quantity>0</output> no carrinho</span>' +
       '<button class="icon-button add-product" data-product="' + esc(product.id) + '" data-menu-delta="1" aria-label="Adicionar ' + esc(product.name) + '">' +
       icon('plus') + '</button></div></article>').join('') :
@@ -265,7 +291,12 @@ export function customer(context) {
 
   function syncProductQuantities(store) {
     for (const card of document.querySelectorAll('[data-menu-product]')) {
-      const quantity = cart.store === store.id ? cart.items[card.dataset.menuProduct] ?? 0 : 0;
+      const product = store.products.find(product=>product.id===card.dataset.menuProduct);
+      const ids = optionIds(product);
+      const quantity = cart.store === store.id ? cart.items[lineKey(product,ids)] ?? 0 : 0;
+      const extra = (product.options ?? []).filter(option=>ids.includes(option.id)).reduce((sum,option)=>sum+option.price,0);
+      $('[data-configured-price]',card).textContent = ids.length ? 'Unidade com opcionais: ' + money(product.price+extra) : '';
+      for (const input of card.querySelectorAll('[data-option]')) input.disabled = !store.is_open;
       $('[data-product-quantity]',card).textContent = quantity;
       $('[data-menu-delta="-1"]',card).disabled = quantity === 0;
       $('[data-menu-delta="1"]',card).disabled = !store.is_open || quantity >= 25;
@@ -337,18 +368,20 @@ export function customer(context) {
 
   function cartView() {
     const store = stores.find(candidate => candidate.id === cart.store);
-    const products = store?.products.filter(product => cart.items[product.id]) ?? [];
-    const subtotal = products.reduce((sum,p) => sum + p.price * cart.items[p.id],0);
+    const products = Object.keys(cart.items).map(key=>cartLine(store,key)).filter(Boolean);
+    const subtotal = products.reduce((sum,line) => sum + line.price * line.quantity,0);
     const missing = Object.keys(cart.items).length > products.length;
     main.innerHTML = '<div class="wrap page"><a class="back-link" href="' + (store ? '#loja/' + esc(store.id) : '#lojas') + '">' +
       icon('back') + ' Continuar explorando</a><span class="overline accent">SEU PEDIDO</span><h1>Meu carrinho</h1>' +
       (!products.length ? '<div class="panel">' + empty('Seu carrinho está vazio', missing ? 'Os itens anteriores não estão mais disponíveis.' : 'Encontre algo gostoso no cardápio.') +
         (missing ? '<button class="btn outline" data-clear>Limpar carrinho</button>' : '') + '</div>' :
-        '<div class="split"><section class="panel"><h2>' + esc(store.name) + '</h2><div class="cart-items">' + products.map(product =>
-          '<div class="cart-row"><div><strong>' + esc(product.name) + '</strong><p>' + money(product.price) + ' por unidade</p></div>' +
-          '<div class="stepper"><button class="icon-button" data-id="' + esc(product.id) + '" data-delta="-1" aria-label="Diminuir ' +
-          esc(product.name) + '">' + icon('minus') + '</button><b>' + cart.items[product.id] + '</b><button class="icon-button" data-id="' +
-          esc(product.id) + '" data-delta="1" aria-label="Aumentar ' + esc(product.name) + '">' + icon('plus') + '</button></div></div>').join('') +
+        '<div class="split"><section class="panel"><h2>' + esc(store.name) + '</h2><div class="cart-items">' + products.map(line =>
+          '<div class="cart-row"><div><strong>' + esc(line.product.name) + '</strong>' +
+          (line.options.length ? '<p class="cart-option-list">' + line.options.map(option=>'+ ' + esc(option.name) + ' (' + money(option.price) + ')').join('<br>') + '</p>' : '') +
+          '<p>' + money(line.price) + ' por unidade · ' + money(line.price * line.quantity) + '</p></div>' +
+          '<div class="stepper"><button class="icon-button" data-id="' + esc(line.key) + '" data-delta="-1" aria-label="Diminuir ' +
+          esc(line.product.name) + '">' + icon('minus') + '</button><b>' + line.quantity + '</b><button class="icon-button" data-id="' +
+          esc(line.key) + '" data-delta="1" aria-label="Aumentar ' + esc(line.product.name) + '">' + icon('plus') + '</button></div></div>').join('') +
           '</div>' + (missing ? '<p class="pilot-label">Itens indisponíveis serão removidos deste pedido.</p>' : '') + '</section>' +
           '<section class="panel"><h2>Entrega e pagamento</h2>' + deliveryAddressMarkup() + '<form class="form-stack" id="checkout">' +
           '<label>Forma de pagamento<select name="payment">' + Object.entries(payments).map(([key,value]) =>
@@ -364,7 +397,10 @@ export function customer(context) {
     if (!products.length) return;
     $('.cart-items').onclick = event => {
       const button = event.target.closest('[data-delta]');
-      if (button) setItem(store,products.find(product => product.id === button.dataset.id),Number(button.dataset.delta));
+      if (button) {
+        const line = products.find(line=>line.key===button.dataset.id);
+        setItem(store,line.product,Number(button.dataset.delta),line.options.map(option=>option.id));
+      }
     };
     $('[data-address]').onclick = () => addressDialog(usePrimary && Boolean(primaryAddress));
     for (const input of document.querySelectorAll('[name=delivery_address]')) input.onchange = () => {
@@ -385,11 +421,11 @@ export function customer(context) {
       localStorage.setItem(requestKey,JSON.stringify(requestId));
       try {
         await command('place', { store_id:store.id, request_id:requestId, address:chosen.text,
-          payment:fields.get('payment'), fee:store.fee, items:products.map(product => ({
-            id:product.id, quantity:cart.items[product.id], price:product.price
+          payment:fields.get('payment'), fee:store.fee, items:products.map(line => ({
+            id:line.product.id, quantity:line.quantity, price:line.product.price, options:line.options.map(option=>({id:option.id,price:option.price}))
           })) });
       } catch (err) {
-        if (err.message.includes('mudaram') || err.message.includes('cardápio')) {
+        if (err.message.includes('mudaram') || err.message.includes('cardápio') || err.message.includes('opcionais')) {
           await loadCatalog();
           render();
           toast(err.message);
