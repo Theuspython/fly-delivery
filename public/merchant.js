@@ -22,8 +22,10 @@ const actions = order =>
   (order.status === 'placed' ? transitionButton(order,'preparing','Aceitar e preparar') : '') +
   (order.status === 'preparing' ? transitionButton(order,'ready','Pedido pronto · chamar motoboy') : '') +
   (['placed','preparing','ready'].includes(order.status) ? transitionButton(order,'cancelled','Cancelar','outline') : '');
-const cards = (orders,active = false) => '<div class="order-grid">' + orders.map(order =>
-  orderCard(order,active ? actions(order) : '',{ address:true,customer:true,progress:true,timeline:!active })).join('') + '</div>';
+const cards = (orders,active = false,openOrderId = null) => '<div class="order-grid merchant-order-grid">' + orders.map(order =>
+  orderCard(order,active ? actions(order) : '',{
+    address:true,progress:true,timeline:!active,compact:true,expanded:order.id === openOrderId
+  })).join('') + '</div>';
 
 function pagination(data) {
   if (data.pages <= 1) return '';
@@ -49,7 +51,7 @@ function financeMarkup(data) {
       money(day.products) + '</td><td>' + money(day.delivery) + '</td><td>' + money(day.total) + '</td></tr>').join('') +
     '</tbody></table></div></div><div class="panel finance-ledger"><h2>Pedidos do período</h2><div class="merchant-table-scroll">' +
     '<table class="merchant-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Entregue em</th><th>Produtos</th><th>Entrega</th><th>Total</th></tr></thead><tbody>' +
-    data.orders.map(order => '<tr><td>#' + esc(order.id.slice(0,8)) + '<small>' + esc(order.store) + '</small></td><td>' +
+    data.orders.map(order => '<tr><td>#' + esc(order.id.slice(0,8)) + '</td><td>' +
       esc(order.customer_name) + '</td><td>' + timestamp(order.completed_at) + '</td><td>' + money(order.subtotal) +
       '</td><td>' + money(order.fee) + '</td><td>' + money(order.subtotal+order.fee) + '</td></tr>').join('') +
     '</tbody></table></div>' + pagination(data) + '</div>';
@@ -61,6 +63,7 @@ export function merchant(context) {
   let busy = false;
   let stores = [];
   let historyStatus = 'delivered';
+  let openOrderId = null;
   let page = 0;
   let previousSection;
   let owner;
@@ -101,15 +104,19 @@ export function merchant(context) {
       let markup;
       if (currentSection === 'pedidos') {
         const orders = await command('merchant_active_orders');
+        if (revision !== sequence || context.user !== user || currentSection !== section()) return;
+        if (openOrderId && !orders.some(order => order.id === openOrderId)) openOrderId = null;
         markup = orders.length ? '<div class="merchant-queue-summary">' +
           ['placed','preparing','ready','assigned','picked_up'].map(status => {
             const names = {placed:'Novos',preparing:'Em preparo',ready:'Prontos',assigned:'Motoboy aceitou',picked_up:'Em entrega'};
             return '<span>' + names[status] + ' <b>' + orders.filter(order => order.status === status).length + '</b></span>';
-          }).join('') + '</div>' + cards(orders,true) : '<div class="panel">' +
+          }).join('') + '</div>' + cards(orders,true,openOrderId) : '<div class="panel">' +
           empty('Nenhum pedido em andamento','Os novos pedidos chegam aqui. Pedidos entregues ficam em Pedidos finalizados.') + '</div>';
       } else if (currentSection === 'finalizados') {
         const data = await command('merchant_history',{ status:historyStatus,page });
-        markup = data.count ? cards(data.orders) + pagination(data) : '<div class="panel">' +
+        if (revision !== sequence || context.user !== user || currentSection !== section()) return;
+        if (openOrderId && !data.orders.some(order => order.id === openOrderId)) openOrderId = null;
+        markup = data.count ? cards(data.orders,false,openOrderId) + pagination(data) : '<div class="panel">' +
           empty('Nenhum pedido neste filtro','Os pedidos saem da tela inicial quando são entregues ou cancelados.') + '</div>';
       } else if (currentSection === 'financeiro') {
         const data = await command('merchant_finance',{ date_from:fromDate,date_to:toDate,page });
@@ -146,9 +153,10 @@ export function merchant(context) {
       page = 0;
       previousSection = null;
       stores = [];
+      openOrderId = null;
     }
     const currentSection = section();
-    if (previousSection !== currentSection) page = 0;
+    if (previousSection !== currentSection) { page = 0; openOrderId = null; }
     previousSection = currentSection;
     main.innerHTML = '<div class="wrap page merchant-workspace"><div class="section-head"><div><span class="overline accent">ESTABELECIMENTO</span>' +
       '<h1>' + labels[currentSection] + '</h1></div></div><div id="merchant-body"></div></div>';
@@ -179,6 +187,7 @@ export function merchant(context) {
     if (currentSection === 'finalizados') $('#history-status').onchange = async event => {
       historyStatus = event.target.value;
       page = 0;
+      openOrderId = null;
       await refresh(true);
     };
     if (currentSection === 'financeiro') {
@@ -209,6 +218,18 @@ export function merchant(context) {
       };
     }
     const result = $('#merchant-results');
+    result.addEventListener('click',event => {
+      const toggle = event.target.closest('[data-toggle-order]');
+      if (!toggle) return;
+      openOrderId = openOrderId === toggle.dataset.toggleOrder ? null : toggle.dataset.toggleOrder;
+      for (const button of result.querySelectorAll('[data-toggle-order]')) {
+        const expanded = button.dataset.toggleOrder === openOrderId;
+        button.setAttribute('aria-expanded',String(expanded));
+        button.textContent = expanded ? 'Recolher' : 'Visualizar';
+        button.setAttribute('aria-label',(expanded ? 'Recolher' : 'Visualizar') + ' pedido #' + button.dataset.toggleOrder.slice(0,8));
+        document.getElementById(button.getAttribute('aria-controls')).hidden = !expanded;
+      }
+    });
     if (currentSection === 'pedidos') bindTransitions(result,() => refresh(true),() => refresh(true));
     else result.onclick = async event => {
       const button = event.target.closest('button');
@@ -219,6 +240,7 @@ export function merchant(context) {
       if (button.dataset.editProduct) productForm(store,store.products.find(item => item.id === button.dataset.editProduct),() => refresh(true));
       if (button.dataset.page !== undefined) {
         page = Number(button.dataset.page);
+        openOrderId = null;
         await refresh(true);
         main.focus();
       }

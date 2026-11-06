@@ -136,11 +136,24 @@ export function orderCard(order, actions = '', options = {}) {
       '<li><span>' + esc(statuses[event.status]) + '</span><time datetime="' + esc(event.created_at) + '">' +
       new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(event.created_at)) + '</time></li>').join('') + '</ol>'
     : '';
+  const body = progress + '<div class="order-body">' + details +
+    '<strong>' + money(options.offer ? order.fee : order.subtotal + order.fee) + (options.offer ? ' pela entrega' : '') +
+    '</strong></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '');
+  if (options.compact) {
+    const detailsId = 'merchant-order-' + order.id;
+    const expanded = Boolean(options.expanded);
+    return '<article class="order-card compact-order order-stage-' + esc(order.status) + '"><div class="compact-order-head">' +
+      '<div><span class="overline">Pedido #' + esc(order.id.slice(0,8)) + '</span><h3>' +
+      esc(order.customer_name || 'Cliente') + '</h3></div><div class="compact-order-controls"><span class="status status-' +
+      esc(order.status) + '">' + esc(statuses[order.status]) + '</span>' +
+      '<button class="btn outline" data-toggle-order="' + esc(order.id) + '" aria-controls="' + esc(detailsId) +
+      '" aria-expanded="' + expanded + '" aria-label="' + (expanded ? 'Recolher' : 'Visualizar') + ' pedido #' +
+      esc(order.id.slice(0,8)) + '">' + (expanded ? 'Recolher' : 'Visualizar') + '</button></div></div>' +
+      '<div class="compact-order-details" id="' + esc(detailsId) + '"' + (expanded ? '' : ' hidden') + '>' + body + '</div></article>';
+  }
   return '<article class="order-card' + (options.progress ? ' order-stage-' + esc(order.status) : '') + '"><div class="order-head"><div><span class="overline">#' + esc(order.id.slice(0,8)) +
     '</span><h3>' + esc(order.store) + '</h3></div><span class="status status-' + esc(order.status) + '">' +
-    esc(options.offer ? 'Disponível' : statuses[order.status]) + '</span></div>' + customer + progress + '<div class="order-body">' + details +
-    '<strong>' + money(options.offer ? order.fee : order.subtotal + order.fee) + (options.offer ? ' pela entrega' : '') +
-    '</strong></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '') + '</article>';
+    esc(options.offer ? 'Disponível' : statuses[order.status]) + '</span></div>' + customer + body + '</article>';
 }
 
 export const transitionButton = (order, status, label, className = 'primary') =>

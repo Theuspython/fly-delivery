@@ -329,3 +329,12 @@ p { line-height:1.5 }
   .merchant-date-filter { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .order-progress { gap:9px 6px; }
 }
+
+.merchant-order-grid { align-items:start; }
+.compact-order-head { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; }
+.compact-order-head h3 { font-size:1.07rem; margin-top:6px; overflow-wrap:anywhere; }
+.compact-order-controls { display:grid; justify-items:end; gap:8px; }
+.compact-order-controls .status { max-width:170px; }
+.compact-order-controls .btn { min-height:36px; padding:7px 11px; font-size:.8rem; }
+.compact-order-details[hidden] { display:none!important; }
+.compact-order-details { border-top:1px solid var(--line); margin-top:15px; padding-top:1px; }
