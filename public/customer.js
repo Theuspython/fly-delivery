@@ -39,6 +39,7 @@ export function customer(context) {
   let previousView;
   let drawer;
   let openOrderId = null;
+  let historyPage = 0;
   const route = () => location.hash.slice(1) || 'inicio';
 
   function closeMenu() {
@@ -60,7 +61,7 @@ export function customer(context) {
     }
     drawer.innerHTML = '<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="customer-menu-title">Cliente</h2></div>' +
       '<button class="icon-button" data-close-menu aria-label="Fechar menu">' + icon('close') + '</button></div>' +
-      '<nav aria-label="Áreas do cliente">' + [['pedidos','Pedidos','bag'],['enderecos','Endereços','pin']].map(([key,label,symbol]) =>
+      '<nav aria-label="Áreas do cliente">' + [['pedidos','Pedidos ativos','bag'],['historico','Histórico de pedidos','clock'],['enderecos','Endereços','pin']].map(([key,label,symbol]) =>
         '<a href="#' + key + '"' + (route() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) + label + '</a>').join('') + '<button type="button" data-account>' + icon('person') + ' Minha conta</button></nav>';
     drawer.showModal();
     $('[data-customer-menu]')?.setAttribute('aria-expanded','true');
@@ -457,8 +458,8 @@ export function customer(context) {
     });
   }
 
-  function orderView() {
-    main.innerHTML = '<div class="wrap page"><span class="overline accent">ACOMPANHAMENTO</span><h1>Meus pedidos</h1><div id="order-list">' +
+  function orderView(historyView = false) {
+    main.innerHTML = '<div class="wrap page"><span class="overline accent">ACOMPANHAMENTO</span><h1>' + (historyView ? 'Histórico de pedidos' : 'Pedidos ativos') + '</h1><div id="order-list">' +
       (context.user ? '<p class="muted">Carregando pedidos…</p>' :
         '<div class="panel">' + empty('Acompanhe seus pedidos','Entre para ver os pedidos em andamento e o histórico.') +
         '<button class="btn primary" data-signin>Entrar</button></div>') + '</div></div>';
@@ -471,18 +472,21 @@ export function customer(context) {
       if (reading) { queued = true; return; }
       reading = true;
       try {
-        const orders = await command('orders',{ view:'customer' });
+        const data = await command(historyView ? 'customer_order_history' : 'customer_active_orders',historyView ? {page:historyPage} : {});
+        const orders = data.orders;
         if (!list.isConnected) return;
-        if (statusByOrder) {
+        if (statusByOrder && !historyView) {
           const changed = orders.find(order => statusByOrder.has(order.id) && statusByOrder.get(order.id) !== order.status);
           if (changed) toast(changed.store + ' · ' + statuses[changed.status]);
+          else if ([...statusByOrder.keys()].some(id=>!orders.some(order=>order.id===id))) toast('Pedido atualizado. Confira o Histórico de pedidos.');
         }
         statusByOrder = new Map(orders.map(order => [order.id,order.status]));
         if (openOrderId && !orders.some(order => order.id === openOrderId)) openOrderId = null;
         const markup = orders.length ? '<div class="order-grid customer-order-grid">' + orders.map(order => orderCard(order,
-          order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true,timeline:true,progress:true,compact:true,customerView:true,expanded:order.id === openOrderId })).join('') +
-          '</div>' : '<div class="panel">' + empty('Nenhum pedido ainda','Explore os cardápios para começar.') + '</div>';
-        if (list.innerHTML !== markup) list.innerHTML = markup;
+          !historyView && order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true,timeline:true,progress:true,compact:true,customerView:true,expanded:order.id === openOrderId })).join('') +
+          '</div>' : '<div class="panel">' + empty(historyView ? 'Nenhum pedido no histórico' : 'Nenhum pedido ativo',historyView ? 'Pedidos entregues ou cancelados aparecerão aqui.' : 'Explore os cardápios para fazer um novo pedido.') + '</div>';
+        const pager = historyView && data.pages>1 ? '<nav class="merchant-pagination" aria-label="Páginas do histórico"><button class="btn outline" data-order-page="' + (data.page-1) + '"' + (data.page===0?' disabled':'') + '>Anterior</button><span>Página ' + (data.page+1) + ' de ' + data.pages + '</span><button class="btn outline" data-order-page="' + (data.page+1) + '"' + (data.page+1>=data.pages?' disabled':'') + '>Próxima</button></nav>' : '';
+        if (list.innerHTML !== markup+pager) list.innerHTML = markup+pager;
       } catch (err) {
         if (list.isConnected && !list.querySelector('.order-grid')) list.innerHTML = empty('Pedidos indisponíveis',err.message);
       } finally {
@@ -491,6 +495,8 @@ export function customer(context) {
       }
     }
     list.addEventListener('click',event => {
+      const page = event.target.closest('[data-order-page]');
+      if (page && !page.disabled) { historyPage=Number(page.dataset.orderPage); openOrderId=null; refreshOrders(); return; }
       const toggle = event.target.closest('[data-toggle-order]');
       if (!toggle) return;
       openOrderId = openOrderId === toggle.dataset.toggleOrder ? null : toggle.dataset.toggleOrder;
@@ -520,8 +526,9 @@ export function customer(context) {
     clearInterval(ordersTimer);
     orderStream?.close();
     const view = route();
-    if (view !== previousView) openOrderId = null;
+    if (view !== previousView) { openOrderId = null; if (view==='historico') historyPage=0; }
     if (view === 'pedidos') orderView();
+    else if (view === 'historico') orderView(true);
     else if (view === 'enderecos') addressView();
     else if (view === 'carrinho' && loaded) cartView();
     else if (view.startsWith('loja/') && loaded) {
@@ -541,7 +548,7 @@ export function customer(context) {
   });
   async function refreshCatalog() {
     const view = route();
-    if (!active || ['pedidos','enderecos'].includes(view) || $('#dialog').open) return;
+    if (!active || ['pedidos','historico','enderecos'].includes(view) || $('#dialog').open) return;
     const before = JSON.stringify(stores);
     const hadError = Boolean(error);
     await loadCatalog();

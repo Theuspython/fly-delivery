@@ -29,7 +29,7 @@ const queueStage = order => ['ready','assigned'].includes(order.status) ? 'prepa
 const queueLabels = {placed:'Novos',preparing:'Em produção',picked_up:'Em entrega'};
 const cards = (orders,active = false,openOrderId = null) => '<div class="order-grid merchant-order-grid">' + orders.map(order =>
   orderCard(order,active ? actions(order) : '',{
-    address:true,progress:true,timeline:!active,compact:true,expanded:order.id === openOrderId
+    address:true,hideAddress:order.status==='placed'||order.address_hidden,progress:true,timeline:!active,compact:true,expanded:order.id === openOrderId
   })).join('') + '</div>';
 
 function pagination(data) {
@@ -280,7 +280,16 @@ export function merchant(context) {
         document.getElementById(button.getAttribute('aria-controls')).hidden = !expanded;
       }
     });
-    if (currentSection === 'pedidos') bindTransitions(result,() => refresh(true),() => refresh(true));
+    if (currentSection === 'pedidos') bindTransitions(result,async ({id,status}) => {
+      const showAccepted = status==='preparing' && section()==='pedidos' && context.user?.id===owner;
+      if (showAccepted) { queueFilter='preparing'; openOrderId=id; }
+      await refresh(true);
+      if (showAccepted && result.isConnected) {
+        const detail=$('#merchant-order-' + id);
+        detail?.closest('.order-card')?.scrollIntoView?.({behavior:'smooth',block:'nearest'});
+        detail?.closest('.order-card')?.querySelector('[data-toggle-order]')?.focus({preventScroll:true});
+      }
+    },() => refresh(true));
     else result.onclick = async event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;

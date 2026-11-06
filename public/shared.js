@@ -125,7 +125,9 @@ export function orderCard(order, actions = '', options = {}) {
   const details = '<ul class="order-item-list">' + (order.items ?? []).map(item => '<li><strong>' + item.quantity + '× ' + esc(item.name) + (item.size ? ' · Tamanho ' + esc(item.size) : '') + '</strong>' +
     ((item.options ?? []).length ? '<small>' + item.options.map(option => '+ ' + esc(option.name) + ' (' + money(option.price) + ')').join(' · ') + '</small>' : '') +
     '<small>' + money(item.price) + ' por unidade · ' + money(item.price * item.quantity) + '</small></li>').join('') + '</ul>' +
-    (options.address ? '<p>' + icon('pin') + ' ' + esc(order.address) + '</p>' : '') +
+    (options.address ? (options.hideAddress || order.address_hidden ? '<p class="muted order-address-hidden">' + icon('shield') + ' ' +
+      (order.status==='cancelled' ? 'Endereço indisponível: pedido cancelado antes do aceite.' : 'O endereço será liberado após aceitar o pedido.') + '</p>' :
+      order.address ? '<p>' + icon('pin') + ' ' + esc(order.address) + '</p>' : '') : '') +
     (order.note ? '<div class="order-note"><strong>Observação do cliente</strong><p>' + esc(order.note) + '</p></div>' : '') +
     '<p>' + esc(payments[order.payment]) + '</p>';
   const customer = options.customer ? '<p class="order-customer"><strong>' + esc(order.customer_name || 'Cliente') + '</strong></p>' : '';
@@ -172,8 +174,8 @@ export function bindTransitions(root, onSuccess, onError = () => {}) {
     if (button.dataset.transition === 'cancelled' && !window.confirm('Cancelar este pedido?')) return;
     button.disabled = true;
     try {
-      await command('transition', { id:button.dataset.id, status:button.dataset.transition });
-      await onSuccess();
+      const order = await command('transition', { id:button.dataset.id, status:button.dataset.transition });
+      await onSuccess({id:button.dataset.id,status:button.dataset.transition,order});
     } catch (error) {
       toast(error.message);
       onError();
