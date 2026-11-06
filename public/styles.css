@@ -429,6 +429,7 @@ p { line-height:1.5 }
 .order-totals .order-grand-total { font-size:1rem; font-weight:800; margin-top:9px; }
 .size-editor { min-width:0; border:1px solid var(--line); border-radius:12px; padding:12px; }
 .size-editor legend { font-size:.9rem; font-weight:700; padding:0 4px; }
+.form-stack [data-base-price][hidden] { display:none; }
 .size-editor-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; margin-top:12px; }
 .size-editor-grid > div { min-width:0; }
 .size-editor-grid > div > label:first-child { margin-bottom:8px; }
