@@ -77,3 +77,15 @@ test('unauthenticated and cross-origin mutations are rejected', async () => {
   const redirect = await fetch(origin + '/', { redirect:'manual' });
   assert.equal(redirect.headers.get('location'),'/cliente/');
 });
+
+test('invoice checkout requires the merchant session and origin, while unrelated payment webhooks are ignored', async()=>{
+  for(const path of ['/api/billing/checkout','/api/billing/verify']){
+    assert.equal((await fetch(origin+path)).status,405);
+    const denied=await fetch(origin+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-FD-App':'cliente',Cookie:'fd_cliente_access=fixture'},body:'{}'});
+    assert.equal(denied.status,401);
+    const cross=await fetch(origin+path,{method:'POST',headers:{Origin:'https://other.example','Content-Type':'application/json','X-FD-App':'loja',Cookie:'fd_loja_access=fixture'},body:'{}'});
+    assert.equal(cross.status,403);
+  }
+  const ignored=await fetch(origin+'/api/infinitepay/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_nsu:'flycar-daily-10000000-0000-4000-8000-000000000001',transaction_nsu:'t',slug:'s'})});
+  assert.equal(ignored.status,200);assert.deepEqual(await ignored.json(),{ignored:true});
+});

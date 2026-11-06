@@ -23,6 +23,7 @@ function header() {
   $('#top').innerHTML = '<div class="wrap topbar">' +
     (clientReady ? '<button class="icon-button customer-menu-button" data-customer-menu aria-label="Abrir menu do cliente" aria-controls="customer-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     (page === 'loja' ? '<button class="icon-button merchant-menu-button" data-merchant-menu aria-label="Abrir menu do estabelecimento" aria-controls="merchant-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
+    (page === 'admin' ? '<button class="icon-button merchant-menu-button" data-admin-menu aria-label="Abrir menu da administração" aria-controls="admin-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
     (clientReady ? '<a class="icon-button home-button" data-home href="#lojas" aria-label="Voltar à vitrine" title="Início">' + icon('home') + '</a>' :
     page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
@@ -33,6 +34,8 @@ function header() {
   if (customerMenu) customerMenu.onclick = () => app.openMenu();
   const menuButton = $('[data-merchant-menu]');
   if (menuButton) menuButton.onclick = () => app.openMenu();
+  const adminMenu = $('[data-admin-menu]');
+  if (adminMenu) adminMenu.onclick = () => app.openMenu();
   const homeButton = $('[data-home]');
   if (homeButton) homeButton.onclick = event => { event.preventDefault(); app.goHome(); };
   const button = $('[data-account]',$('#top'));

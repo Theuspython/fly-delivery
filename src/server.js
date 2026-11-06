@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createBilling } from './billing.js';
 import { RealtimeClient } from '@supabase/realtime-js';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url)).replace(/\/$/, '');
@@ -114,7 +115,7 @@ async function upstream(path, { method = 'POST', token, body, type = 'applicatio
   const data = response.status === 204 ? null : await response.json();
   if (!response.ok) {
     const message = data?.message ?? data?.msg ?? data?.error_description;
-    if (data?.code === 'P0001' && message?.startsWith('FD: ')) throw new HttpError(409, message.slice(4));
+    if (data?.code === 'P0001' && message?.startsWith('FD: ')) throw new HttpError(message==='FD: Fatura não encontrada.'?404:409, message.slice(4));
     if (response.status === 401) throw new HttpError(401, 'Entre novamente para continuar.');
     if (path.startsWith('/functions/') && data?.code === 'FD_ONBOARDING' && typeof message === 'string') {
       throw new HttpError(response.status, message);
@@ -137,6 +138,18 @@ async function upstream(path, { method = 'POST', token, body, type = 'applicatio
   return data;
 }
 
+const billing = createBilling({rpc:(action,input)=>upstream('/rest/v1/rpc/fd_billing_backend',{
+  body:{secret:process.env.FD_BILLING_BRIDGE_TOKEN,action,input}
+})});
+const billingRate = new Map();
+function limitBilling(req,max){
+  const key=String(req.headers['x-real-ip']??req.socket.remoteAddress??'unknown').slice(0,80)+':'+new URL(req.url,'http://localhost').pathname;
+  const now=Date.now();
+  for(const [id,value] of billingRate)if(value.until<=now)billingRate.delete(id);
+  const entry=billingRate.get(key)??{count:0,until:now+60000};
+  if(entry.count>=max||(!billingRate.has(key)&&billingRate.size>=4096))throw new HttpError(429,'Muitas solicitações de pagamento. Aguarde um minuto.');
+  entry.count++;billingRate.set(key,entry);
+}
 async function readJson(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw new HttpError(415, 'Formato inválido.');
   try {
@@ -334,6 +347,16 @@ async function api(req, res, url) {
     if (change) setSession(req,res,null);
     return json(res,200,data);
   }
+  if (url.pathname === '/api/billing/checkout' || url.pathname === '/api/billing/verify') {
+    if(!access||sessionCookie!=='fd_loja_access')throw new HttpError(401,'Entre no estabelecimento para continuar.');
+    limitBilling(req,15);
+    const identity=await upstream('/rest/v1/rpc/fd_api',{token:access,body:{action:'session',input:{}}});
+    if(identity.role!=='merchant')throw new HttpError(403,'Acesso restrito ao estabelecimento.');
+    const input=await readJson(req);
+    if(!input||typeof input!=='object'||Array.isArray(input))throw new HttpError(400,'Dados de pagamento inválidos.');
+    const data=url.pathname.endsWith('/checkout')?await billing.checkout(identity.id,input.id):await billing.confirm(input,identity.id);
+    return json(res,200,data);
+  }
   if (url.pathname === '/api/command') {
     if (!access) throw new HttpError(401, 'Entre para continuar.');
     const { action, input } = await readJson(req) ?? {};
@@ -390,6 +413,11 @@ export function createApp() {
       const url = new URL(req.url, 'http://localhost');
       if (['/entregador','/entregador/','/entregador.webmanifest','/api/maps/browser-config'].includes(url.pathname)) throw new HttpError(410,'Esta função foi encerrada. A entrega é feita pelo estabelecimento.');
       if (url.pathname === '/health') return json(res, 200, { status: 'ok' });
+      if (url.pathname==='/api/infinitepay/webhook') {
+        if(req.method!=='POST')throw new HttpError(405,'Método indisponível.');
+        limitBilling(req,80);
+        return json(res,200,await billing.webhook(await readJson(req)));
+      }
       if (url.pathname.startsWith('/api/')) return await api(req, res, url);
       if (!['GET', 'HEAD'].includes(req.method)) throw new HttpError(405, 'Método indisponível.');
       if (url.pathname === '/') {
@@ -430,5 +458,10 @@ export function createApp() {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT ?? 3000);
-  createApp().listen(port, '0.0.0.0', () => console.log('Fly Delivery na porta ' + port));
+  createApp().listen(port, '0.0.0.0', () => {
+    console.log('Fly Delivery na porta ' + port);
+    const tick=()=>billing.tick().catch(error=>console.error('Billing maintenance failed:',error.status??'unavailable'));
+    tick();
+    setInterval(tick,30000).unref();
+  });
 }

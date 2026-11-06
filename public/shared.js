@@ -58,7 +58,7 @@ export async function api(path, data, retry = true) {
     method:'POST', headers:{ 'Content-Type':upload ? data.type : 'application/json', 'X-FD-App':location.pathname.split('/')[1] || 'cliente' },
     body:upload ? data : JSON.stringify(data)
   });
-  if (response.status === 401 && retry && (path === 'command' || path === 'provision' || path === 'change-password' || path === 'upload-profile' || path.startsWith('upload?'))) {
+  if (response.status === 401 && retry && (path === 'command' || path === 'provision' || path === 'change-password' || path === 'upload-profile' || path.startsWith('upload?') || path.startsWith('billing/'))) {
     refresh ??= api('refresh', {}, false).finally(() => { refresh = null; });
     await refresh;
     return api(path, data, false);

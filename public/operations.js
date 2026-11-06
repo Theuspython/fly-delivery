@@ -1,3 +1,4 @@
+import { percentage } from './invoices.js';
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, empty } from './shared.js';
 
@@ -61,6 +62,14 @@ function editStoreForm(store,done) {
     if (!selected.length) throw new Error('Selecione pelo menos uma categoria.');
     await command('admin_update_store',{id:store.id,name:fields.get('name'),categories:selected});
     el.close();toast('Estabelecimento atualizado.');await done();
+  });
+}
+
+function suspensionForm(store,done) {
+  const el=modal('Suspender estabelecimento','<form class="form-stack" id="suspend-store-form"><p><strong>' + esc(store.name) + '</strong> ficará oculto na vitrine e não receberá novos pedidos. A loja continuará acessando as faturas e os pedidos já recebidos.</p><label>Mensagem para o estabelecimento<textarea name="reason" rows="4" maxlength="500">Estabelecimento suspenso por pendência de pagamento da comissão Fly Delivery. Acesse Faturas Fly Delivery para regularizar ou fale com a administração.</textarea></label>' + formEnd('Confirmar suspensão') + '</form>');
+  bindSubmit($('#suspend-store-form',el),async fields=>{
+    await command('admin_set_suspension',{id:store.id,suspend:true,reason:fields.get('reason')});
+    el.close();toast('Estabelecimento suspenso.');await done();
   });
 }
 
@@ -211,9 +220,10 @@ export function storeMarkup(store, role, productsOnly = false) {
   const labels = esc((store.categories ?? [store.category]).join(' · '));
   if (role === 'admin') {
     return '<article class="panel management-card"><span class="overline">' + labels + '</span><h3>' + esc(store.name) +
-      '</h3><p>' + (store.owner_login ? 'Login: ' + esc(store.owner_login) : 'Acesso a configurar') + '</p>' +
+      '</h3>' + (store.suspension?.suspended ? '<p class="management-suspended">' + esc(store.suspension.reason) + '</p>' : '') + '<p>' + (store.owner_login ? 'Login: ' + esc(store.owner_login) : 'Acesso a configurar') + '</p>' +
       '<div class="order-actions"><button class="btn outline" data-admin-edit="' + esc(store.id) + '">Editar</button>' +
       '<button class="btn outline danger-text" data-admin-delete="' + esc(store.id) + '">Excluir</button>' +
+      '<button class="btn outline" ' + (store.suspension?.manual ? 'data-admin-resume' : 'data-admin-suspend') + '="' + esc(store.id) + '">' + (store.suspension?.manual ? 'Reativar' : 'Suspender') + '</button>' +
       (!store.owner_login ? '<button class="btn outline" data-link-store="' + esc(store.id) + '">Criar login</button>' : '') + '</div></article>';
   }
   const actions = (productsOnly ? '' : '<button class="btn outline" data-settings="' + esc(store.id) + '">Foto e horários</button>' +
@@ -232,62 +242,66 @@ export function storeMarkup(store, role, productsOnly = false) {
 }
 
 export function operations(page, context) {
-  let timer;
-  let sequence = 0;
-  let storeList = [];
-  let refreshing = false;
-
-  async function refresh(force = false) {
-    if ((refreshing && !force) || context.user?.role !== 'admin') return;
-    const user = context.user;
-    const revision = ++sequence;
-    refreshing = true;
-    try {
-      const stores = await command('managed_stores');
-      if (revision !== sequence || context.user !== user) return;
-      storeList = stores;
-      const region = $('#ops-stores');
-      if (!region) return;
-      const markup = '<div class="section-head"><h2>Estabelecimentos</h2><button class="btn primary" data-add-store>' +
-        icon('plus') + ' Novo estabelecimento</button></div>' + (stores.length ? '<div class="management-grid">' +
-        stores.map(store => storeMarkup(store,'admin')).join('') + '</div>' : '<div class="panel">' +
-        empty('Nenhuma loja cadastrada','Cadastre o primeiro estabelecimento.','store') + '</div>');
-      if (region.innerHTML !== markup) region.innerHTML = markup;
-      $('#ops-error').textContent = '';
-    } catch (error) {
-      if (revision === sequence && $('#ops-error')) $('#ops-error').textContent = error.message;
-    } finally {
-      if (revision === sequence) refreshing = false;
+  let timer,searchTimer,drawer;
+  let sequence = 0,clientPage = 0;
+  let storeList = [],refreshing = false,search = '';
+  const section=()=>location.hash==='#clientes'?'clientes':'estabelecimentos';
+  function closeMenu(){if(drawer?.open)drawer.close();}
+  function openMenu(){
+    if(!drawer){drawer=document.createElement('dialog');drawer.id='admin-navigation';drawer.className='merchant-drawer';drawer.setAttribute('aria-labelledby','admin-menu-title');document.body.append(drawer);
+      drawer.onclick=event=>{if(event.target===drawer||event.target.closest('[data-close-menu],a'))closeMenu();};
+      drawer.addEventListener('close',()=> $('[data-admin-menu]')?.setAttribute('aria-expanded','false'));
     }
+    drawer.innerHTML='<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="admin-menu-title">Administração</h2></div><button class="icon-button" data-close-menu aria-label="Fechar menu">'+icon('close')+'</button></div><nav aria-label="Áreas da administração">'+[['estabelecimentos','Estabelecimentos','store'],['clientes','Clientes','person']].map(([key,label,symbol])=>'<a href="#'+key+'"'+(key===section()?' aria-current="page"':'')+'>'+icon(symbol)+label+'</a>').join('')+'</nav>';
+    drawer.showModal();$('[data-admin-menu]')?.setAttribute('aria-expanded','true');
   }
-
-  function render() {
-    clearInterval(timer);
-    sequence++;
-    refreshing = false;
-    const user = context.user;
-    main.innerHTML = '<div class="wrap page ops"><div class="ops-heading"><div class="ops-mark">' + icon('shield') +
-      '</div><div><span class="overline accent">GESTÃO FLY DELIVERY</span><h1>Administração</h1>' +
-      '<p>Cadastre estabelecimentos e crie o login e a senha de cada loja.</p></div></div><div id="ops-body"></div></div>';
-    const body = $('#ops-body');
-    if (user?.role !== 'admin') {
-      body.innerHTML = '<div class="panel">' + empty(user ? 'Acesso restrito' : 'Entre para continuar',
-        user ? 'Seu perfil não tem acesso a esta área.' : 'Use o login e a senha da administração.','shield') +
-        (user ? '<button class="btn outline" data-switch-account>Trocar de conta</button>' : '<button class="btn primary" data-signin>Entrar</button>') + '</div>';
-      return;
-    }
-    body.innerHTML = '<p class="form-error" id="ops-error" role="alert"></p><section id="ops-stores"><p class="muted">Carregando estabelecimentos…</p></section>';
-    body.addEventListener('click',event => {
-      const button = event.target.closest('button');
-      if (!button || button.disabled) return;
-      if (button.dataset.adminEdit) editStoreForm(storeList.find(store=>store.id===button.dataset.adminEdit),()=>refresh(true));
-      if (button.dataset.adminDelete) deleteStoreForm(storeList.find(store=>store.id===button.dataset.adminDelete),()=>refresh(true));
-      if (button.hasAttribute('data-add-store') || button.dataset.linkStore) {
-        registrationForm('store',() => refresh(true),storeList.find(store => store.id === button.dataset.linkStore));
+  async function refresh(force=false){
+    if((refreshing&&!force)||context.user?.role!=='admin')return;
+    const user=context.user,currentSection=section(),revision=++sequence;refreshing=true;
+    try{
+      if(currentSection==='clientes'){
+        const data=await command('admin_customers',{page:clientPage,search});
+        if(revision!==sequence||context.user!==user||section()!==currentSection)return;
+        $('#ops-stores').innerHTML='<p class="muted">'+data.count+' cliente(s) cadastrado(s)</p>'+(data.customers.length?'<div class="panel merchant-table-scroll"><table class="merchant-table"><thead><tr><th>Cliente</th><th>Celular</th><th>Conta</th></tr></thead><tbody>'+data.customers.map(client=>'<tr><td>'+esc(client.name)+'</td><td>'+esc(client.phone)+'</td><td>'+(client.enabled?'Ativa':'Inativa')+'</td></tr>').join('')+'</tbody></table></div>':'<div class="panel">'+empty('Nenhum cliente encontrado','Os clientes aparecem aqui após concluir o cadastro.','person')+'</div>')+(data.pages>1?'<nav class="merchant-pagination"><button class="btn outline" data-client-page="'+(data.page-1)+'"'+(!data.page?' disabled':'')+'>Anterior</button><span>Página '+(data.page+1)+' de '+data.pages+'</span><button class="btn outline" data-client-page="'+(data.page+1)+'"'+(data.page+1>=data.pages?' disabled':'')+'>Próxima</button></nav>':'');
+      }else{
+        const [stores,config]=await Promise.all([command('managed_stores'),command('billing_settings')]);
+        if(revision!==sequence||context.user!==user||section()!==currentSection)return;
+        storeList=stores;
+        const markup='<div class="section-head"><h2>Estabelecimentos</h2><button class="btn primary" data-add-store>'+icon('plus')+' Novo estabelecimento</button></div>'+(stores.length?'<div class="management-grid">'+stores.map(store=>storeMarkup(store,'admin')).join('')+'</div>':'<div class="panel">'+empty('Nenhuma loja cadastrada','Cadastre o primeiro estabelecimento.','store')+'</div>');
+        if($('#ops-stores').innerHTML!==markup)$('#ops-stores').innerHTML=markup;
+        $('#commission-current').textContent='Taxa global atual: '+percentage(config.commission_bps);
+        $('#commission-ready').textContent=config.payments_ready?'InfinitePay habilitada. Faturas vencem ao meio-dia seguinte.':'InfinitePay aguardando configuração no Railway. A cobrança só começa quando o pagamento estiver habilitado.';
+        const field=$('#commission-form [name=percentage]');
+        if(!field.dataset.loaded){field.value=config.commission_bps==null?'':config.commission_bps/100;field.dataset.loaded='true';}
       }
-    });
-    refresh(true);
-    timer = setInterval(() => { if (!document.hidden) refresh(); },6000);
+      $('#ops-error').textContent='';
+    }catch(error){if(revision===sequence&&$('#ops-error'))$('#ops-error').textContent=error.message;}
+    finally{if(revision===sequence)refreshing=false;}
   }
-  return { render };
+  function render(){
+    clearInterval(timer);clearTimeout(searchTimer);sequence++;refreshing=false;
+    const user=context.user;
+    main.innerHTML='<div class="wrap page ops"><div class="ops-heading"><div class="ops-mark">'+icon('shield')+'</div><div><span class="overline accent">GESTÃO FLY DELIVERY</span><h1>'+(section()==='clientes'?'Clientes':'Estabelecimentos')+'</h1></div></div><div id="ops-body"></div></div>';
+    const body=$('#ops-body');
+    if(user?.role!=='admin'){closeMenu();body.innerHTML='<div class="panel">'+empty(user?'Acesso restrito':'Entre para continuar',user?'Seu perfil não tem acesso a esta área.':'Use o login e a senha da administração.','shield')+(user?'<button class="btn outline" data-switch-account>Trocar de conta</button>':'<button class="btn primary" data-signin>Entrar</button>')+'</div>';return;}
+    body.innerHTML=(section()==='clientes'?'<label class="search-field admin-client-search">'+icon('search')+'<input id="client-search" type="search" maxlength="100" placeholder="Buscar cliente ou celular" value="'+esc(search)+'"></label>':'<section class="panel commission-settings"><h2>Comissão da plataforma</h2><p id="commission-current" class="muted">Carregando taxa…</p><form id="commission-form" class="form-stack"><label>Porcentagem sobre as vendas (%)<input type="number" name="percentage" min="0" max="100" step="0.01" required placeholder="Ex.: 10"></label><p class="muted">A confirmação aplica a taxa aos próximos pedidos entregues de todos os estabelecimentos. Comissões já registradas permanecem iguais. A entrega não entra na base de cálculo.</p>'+formEnd('Confirmar taxa global')+'</form><p id="commission-ready" class="muted"></p></section>')+'<p class="form-error" id="ops-error" role="alert"></p><section id="ops-stores"><p class="muted">Carregando…</p></section>';
+    if($('#client-search'))$('#client-search').oninput=event=>{search=event.target.value;clientPage=0;clearTimeout(searchTimer);searchTimer=setTimeout(()=>refresh(true),250);};
+    if($('#commission-form'))bindSubmit($('#commission-form'),async fields=>{
+      const value=Number(fields.get('percentage'));
+      if(!Number.isFinite(value)||value<0||value>100)throw new Error('Informe uma porcentagem entre 0 e 100.');
+      await command('admin_set_commission',{commission_bps:Math.round(value*100)});
+      toast('Taxa global atualizada para todos os estabelecimentos.');await refresh(true);
+    });
+    body.onclick=async event=>{
+      const button=event.target.closest('button');if(!button||button.disabled)return;
+      if(button.dataset.adminEdit)editStoreForm(storeList.find(store=>store.id===button.dataset.adminEdit),()=>refresh(true));
+      if(button.dataset.adminDelete)deleteStoreForm(storeList.find(store=>store.id===button.dataset.adminDelete),()=>refresh(true));
+      if(button.dataset.adminSuspend)suspensionForm(storeList.find(store=>store.id===button.dataset.adminSuspend),()=>refresh(true));
+      if(button.dataset.adminResume){button.disabled=true;try{await command('admin_set_suspension',{id:button.dataset.adminResume,suspend:false});await refresh(true);toast('Suspensão administrativa removida. Faturas vencidas ainda precisam ser quitadas.');}catch(error){toast(error.message);}finally{button.disabled=false;}}
+      if(button.dataset.clientPage!==undefined){clientPage=Number(button.dataset.clientPage);await refresh(true);}
+      if(button.hasAttribute('data-add-store')||button.dataset.linkStore)registrationForm('store',()=>refresh(true),storeList.find(store=>store.id===button.dataset.linkStore));
+    };
+    refresh(true);timer=setInterval(()=>{if(!document.hidden)refresh();},6000);
+  }
+  return {render,openMenu,closeMenu};
 }

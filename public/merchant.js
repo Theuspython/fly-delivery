@@ -1,7 +1,9 @@
-import { $, main, esc, icon, money, command, empty, orderCard, transitionButton, bindTransitions, toast } from './shared.js';
+import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast } from './shared.js';
+import { invoicesMarkup, suspensionBanner } from './invoices.js';
 import { productForm, storeSettings, storeMarkup } from './operations.js';
 
 const sections = [
+  ['faturas','Faturas Fly Delivery','shield'],
   ['pedidos','Pedidos em andamento','bag'],
   ['produtos','Cadastro de produtos','burger'],
   ['finalizados','Pedidos finalizados','check'],
@@ -76,7 +78,25 @@ export function merchant(context) {
   let fromDate = today();
   let toDate = fromDate;
   let drawer;
+  let returning = false;
+  const returnFields = Object.fromEntries(new URLSearchParams(location.search));
+  const paymentReturn = 'invoice_return' in returnFields;
+  if (paymentReturn) history.replaceState(null,'',location.pathname + '#faturas');
   const section = () => labels[location.hash.slice(1)] ? location.hash.slice(1) : 'pedidos';
+
+  function closeMenu() { if (drawer?.open) drawer.close(); }
+
+  async function verifyReturn() {
+    if (!paymentReturn || returning || context.user?.role !== 'merchant') return;
+    returning = true;
+    try {
+      if (returnFields.transaction_nsu && (returnFields.slug || returnFields.invoice_slug) && returnFields.order_nsu) {
+        const result = await api('billing/verify',returnFields);
+        toast(result.paid ? 'Pagamento confirmado. Obrigado!' : 'Pagamento ainda não confirmado. Aguarde e atualize as faturas.');
+      }
+      await refresh(true);
+    } catch(error) { toast(error.message); }
+  }
 
   function openMenu() {
     if (!drawer) {
@@ -119,8 +139,15 @@ export function merchant(context) {
     busy = true;
     const result = $('#merchant-results');
     try {
+      const billingStatus = await command('billing_settings');
+      if (revision !== sequence || context.user !== user || currentSection !== section()) return;
+      const banner = $('#merchant-billing-banner');
+      if (banner) banner.innerHTML = suspensionBanner(billingStatus.stores);
       let markup;
-      if (currentSection === 'pedidos') {
+      if (currentSection === 'faturas') {
+        const data = await command('merchant_invoices',{page});
+        markup = invoicesMarkup(data) + pagination(data);
+      } else if (currentSection === 'pedidos') {
         const orders = await command('merchant_active_orders');
         if (revision !== sequence || context.user !== user || currentSection !== section()) return;
         activeOrders = orders;
@@ -197,7 +224,7 @@ export function merchant(context) {
         '>Data final<input type="date" name="date_to" value="' + esc(toDate) + '"></label><button class="btn primary" type="submit">Filtrar</button></form>' +
         '<p class="muted">Datas de entrega no horário de Brasília.</p>';
     }
-    body.innerHTML = controls + '<p class="form-error" id="merchant-error" role="alert"></p>' +
+    body.innerHTML = '<div id="merchant-billing-banner"></div>' + controls + '<p class="form-error" id="merchant-error" role="alert"></p>' +
       '<div id="merchant-results"><p class="muted">Carregando…</p></div>';
     if (currentSection === 'finalizados') $('#history-status').onchange = async event => {
       historyStatus = event.target.value;
@@ -257,6 +284,18 @@ export function merchant(context) {
     else result.onclick = async event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
+      if (button.dataset.payInvoice) {
+        const tab = window.open('about:blank','_blank');
+        if (tab) tab.opener = null;
+        button.disabled = true;
+        try {
+          const payment = await api('billing/checkout',{id:button.dataset.payInvoice});
+          if (tab && !tab.closed) tab.location.replace(payment.checkoutUrl);
+          else location.assign(payment.checkoutUrl);
+        } catch(error) { if (tab) tab.close(); toast(error.message); }
+        finally { if (button.isConnected) button.disabled = false; }
+        return;
+      }
       const store = stores.find(item => item.id === (button.dataset.settings || button.dataset.open || button.dataset.addProduct || button.dataset.store));
       if (button.dataset.settings) storeSettings(store,() => refresh(true));
       if (button.dataset.addProduct) productForm(store,null,() => refresh(true));
@@ -276,7 +315,8 @@ export function merchant(context) {
       }
     };
     refresh(true);
-    if (currentSection === 'pedidos') timer = setInterval(() => { if (!document.hidden) refresh(); },6000);
+    verifyReturn();
+    if (['pedidos','faturas'].includes(currentSection)) timer = setInterval(() => { if (!document.hidden) refresh(); },6000);
   }
-  return { render,openMenu };
+  return { render,openMenu,closeMenu };
 }

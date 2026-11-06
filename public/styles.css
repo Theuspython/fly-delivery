@@ -443,3 +443,26 @@ p { line-height:1.5 }
 .product-sizes input:checked + span { border-color:var(--orange); color:var(--orange); background:var(--soft); }
 .product-sizes input:focus-visible + span { outline:2px solid var(--orange); outline-offset:2px; }
 .product-sizes input:disabled + span { opacity:.6; cursor:default; }
+
+.billing-notice,.suspension-banner { border:1px solid #dbad58; background:#fff7e6; color:#6c460e; padding:15px; border-radius:14px; margin-bottom:18px; overflow-wrap:anywhere; }
+.suspension-banner { border-color:#dfaa9d; background:#fff0eb; color:#8e341c; }
+.suspension-banner p { margin:0 0 10px; }
+.suspension-banner .muted { font-size:.8rem; margin:10px 0 0; }
+.billing-explainer { max-width:76ch; margin-bottom:18px; }
+.open-invoice { margin-bottom:24px; border-color:#e9d3c1; }
+.invoice-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin:8px 0; }
+.invoice-heading > div { min-width:0; overflow-wrap:anywhere; }
+.open-invoice .invoice-heading > strong { flex:none; font-size:1.4rem; color:var(--orange); }
+.invoice-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.invoice-card { min-width:0; }
+.invoice-card p { margin:9px 0; font-size:.86rem; }
+.invoice-card .btn { margin-top:6px; }
+.invoice-amount { display:block; font-size:1.6rem; margin:12px 0; }
+.invoice-overdue { border-color:#cf7960; }
+.commission-settings { margin-bottom:24px; }
+.commission-settings .form-stack { max-width:520px; margin-top:15px; }
+.commission-settings #commission-ready { font-size:.8rem; margin-top:14px; }
+.management-card .management-suspended { border-left:3px solid #c93913; padding-left:9px; color:#8e341c; font-size:.83rem; }
+.admin-client-search { max-width:420px; margin-bottom:18px; }
+.admin-client-search input { flex:1; min-width:0; }
+@media(max-width:650px) { .invoice-grid { grid-template-columns:1fr; } .open-invoice .invoice-heading { flex-wrap:wrap; } }

@@ -63,3 +63,19 @@ Na vitrine, as etiquetas de categorias ficam em uma única linha deslizável, e 
 O cadastro/edição permite ativar **O item possui tamanhos diferentes**, marcar os tamanhos disponíveis entre P, M e G e informar seus preços. O preço inicial do catálogo é o menor entre os tamanhos; o carrinho e o banco usam o valor do tamanho escolhido mais os opcionais. Tamanhos e combinações diferentes são separados no pedido e preservados no histórico.
 
 O cliente pode escrever uma observação opcional de até 500 caracteres antes de confirmar o pedido. A observação aparece nos detalhes para o cliente e o estabelecimento. Os detalhes também separam Produtos, Entrega e Total. Os filtros Novos, Em produção e Em entrega compartilham as cores de status dos cards.
+
+## Faturas Fly Delivery
+
+O menu do estabelecimento começa por **Faturas Fly Delivery**, seguido de pedidos, produtos e relatórios. O menu da administração reúne **Estabelecimentos** e **Clientes**. A administração pode suspender ou reativar uma loja; a suspensão oculta a loja da vitrine e bloqueia novos pedidos, mantendo o acesso às faturas e o atendimento dos pedidos já recebidos.
+
+A administração define e confirma a comissão global, de 0 a 100%, com duas casas decimais. A taxa vale para os próximos pedidos entregues de todos os estabelecimentos. Cada entrega registra a taxa e o valor da comissão daquele pedido; mudanças posteriores não recalculam comissões já registradas. A base é o subtotal dos produtos, incluindo tamanhos e opcionais, sem a entrega. Pedidos cancelados e vendas anteriores à ativação da cobrança não geram comissão.
+
+As faturas agrupam as entregas por dia civil em `America/Sao_Paulo`: fechamento à meia-noite e vencimento às 12h do dia seguinte. O processo do servidor verifica fechamentos a cada 30 segundos e recupera dias pendentes ao reiniciar; abrir a área de faturas também fecha dias anteriores de forma idempotente. A fatura do dia é uma prévia e não pode ser paga antes do fechamento. Vencimento em aberto suspende novos pedidos automaticamente; a quitação confirmada de todas as pendências libera a loja se não houver suspensão administrativa.
+
+No serviço Fly Delivery do Railway, configure `INFINITEPAY_API_KEY` e `INFINITEPAY_HANDLE` com os valores da mesma conta usada no Flycar Novo e preserve `APP_ORIGIN` como a origem HTTPS do Fly Delivery. A integração cria checkouts Pix com identificação `flydelivery-daily-`, retorno em `/loja/?invoice_return=1` e webhook em `/api/infinitepay/webhook`. Ela confere `paid` e o valor original em centavos em `/payment_check` antes de marcar uma fatura como paga. As faturas e identificadores do Flycar não são alterados nem processados pelo webhook Delivery.
+
+`FD_BILLING_BRIDGE_TOKEN` é uma credencial exclusiva do backend, comparada com seu SHA-256 em `fly_delivery.billing_config`; não deve ir para o navegador. A função pública de ponte usa `SECURITY INVOKER` e delega as operações financeiras à função do schema privado, que valida a credencial. Nenhuma tabela financeira dá acesso direto a `anon` ou `authenticated`. Não coloque valores reais em arquivos versionados.
+
+A cobrança começa somente quando a comissão está definida e o servidor encontra a configuração InfinitePay. Enquanto as credenciais estão ausentes ou com `PREENCHER`, não são registradas novas comissões nem aplicadas suspensões automáticas por faturas; suspensões manuais da administração continuam disponíveis. O provisionamento inicial deixa a taxa sem valor até a confirmação pelo administrador.
+
+Além de `npm test`, os roteiros `test/daily_billing.sql`, `test/sizes_order_notes.sql` e `test/product_options.sql` usam transações com rollback para validar o banco autorizado. Os testes de pagamento usam respostas simuladas da InfinitePay; não realizam pagamentos reais.
