@@ -46,4 +46,4 @@ O painel inicial do estabelecimento lista os pedidos em andamento. Os finalizado
 
 Coordenadas, vínculos e status antigos são preservados no histórico. Pedidos antigos prontos ou atribuídos continuam na fila da loja, que confirma a saída. Novos pedidos não exigem coordenadas nem passam por atribuição a entregadores.
 
-No cliente, o menu de três pontinhos reúne Pedidos e Endereços. O endereço principal fica salvo na conta do cliente; um endereço usado apenas em uma entrega não substitui o principal. O cardápio permite aumentar e reduzir quantidades, e as categorias rolam para alinhar a opção selecionada.
+No cliente, o menu lateral de três traços reúne Pedidos e Endereços, com o mesmo estilo do estabelecimento. Os cards de pedidos ficam recolhidos e exibem os detalhes ao clicar em Visualizar. O endereço principal fica salvo na conta do cliente; um endereço usado apenas em uma entrega não substitui o principal. O cardápio permite aumentar e reduzir quantidades, e as categorias rolam para alinhar a opção selecionada.

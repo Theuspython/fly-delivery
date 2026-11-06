@@ -273,7 +273,7 @@ p { line-height:1.5 }
 .operator-day input[type=time] { min-width:0; }
 .operator-day input:disabled { opacity:.55; }
 
-.merchant-menu-button { flex:none; }
+.merchant-menu-button,.customer-menu-button { flex:none; }
 .merchant-drawer { position:fixed; inset:0 auto 0 0; margin:0; width:min(320px,90vw); height:100dvh; max-height:100dvh; border:0; border-right:1px solid var(--line); padding:22px 16px; background:var(--page); color:var(--ink); box-shadow:10px 0 40px #251b1720; }
 .merchant-drawer::backdrop { background:#251b1770; }
 .merchant-drawer h2 { font-size:1.5rem; margin-top:5px; }
@@ -284,7 +284,7 @@ p { line-height:1.5 }
 .merchant-workspace h1 { font-size:clamp(2rem,4vw,3rem); margin:6px 0 8px; }
 .merchant-workspace h2 { font-size:1.4rem; }
 #merchant-error { margin:12px 0; }
-.merchant-queue-summary { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:17px; }
+.merchant-queue-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:17px; }
 .merchant-queue-summary > span { display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:10px; padding:8px 11px; background:white; font-size:.82rem; color:var(--muted); }
 .merchant-queue-summary b { color:var(--ink); }
 .order-card[class*=order-stage-] { border-left:5px solid var(--stage-color); }
@@ -323,14 +323,14 @@ p { line-height:1.5 }
 .merchant-profile > img { width:82px; height:82px; object-fit:cover; border:1px solid var(--line); border-radius:15px; margin-bottom:12px; }
 .merchant-profile > p { margin-top:8px; }
 @media (max-width:740px) {
-  .topbar:has(.merchant-menu-button) { gap:8px; }
+  .topbar:has(.merchant-menu-button),.topbar:has(.customer-menu-button) { gap:8px; }
   .topbar:has(.merchant-menu-button) .workspace-label { display:none; }
   .finance-summary { grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
   .merchant-date-filter { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .order-progress { gap:9px 6px; }
 }
 
-.merchant-order-grid { align-items:start; }
+.merchant-order-grid,.customer-order-grid { align-items:start; }
 .compact-order-head { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; }
 .compact-order-head h3 { font-size:1.07rem; margin-top:6px; overflow-wrap:anywhere; }
 .compact-order-controls { display:grid; justify-items:end; gap:8px; }
@@ -347,11 +347,6 @@ p { line-height:1.5 }
 .product-quantity { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:10px; border-top:1px solid var(--line); }
 .product-quantity > span { color:var(--muted); font-size:.85rem; }
 .product-quantity output { font-weight:800; color:var(--ink); }
-.customer-menu { position:relative; }
-#customer-navigation { position:absolute; top:calc(100% + 10px); right:0; width:205px; padding:7px; border:1px solid var(--line); border-radius:14px; background:var(--surface); box-shadow:0 12px 35px #251b171a; }
-#customer-navigation[hidden] { display:none; }
-#customer-navigation a { display:flex; align-items:center; gap:10px; padding:13px 12px; border-radius:9px; font-weight:700; }
-#customer-navigation a:hover { background:var(--soft); color:var(--orange); }
 .customer-address-page { max-width:720px; }
 .customer-address-page > .panel { margin-top:22px; }
 .customer-address-page h2 { font-size:1.4rem; }
@@ -364,6 +359,7 @@ p { line-height:1.5 }
 .delivery-address-options input { flex:none; accent-color:var(--orange); width:17px; height:17px; }
 .delivery-address-options strong { display:block; font-size:.9rem; }
 .delivery-address-options small { display:block; color:var(--muted); margin-top:4px; overflow-wrap:anywhere; }
-.merchant-queue-summary > button { display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:10px; min-height:44px; padding:8px 13px; background:var(--surface); font-size:.85rem; font-weight:700; color:var(--muted); }
+.merchant-queue-summary > button { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; min-width:0; border:1px solid var(--line); border-radius:10px; min-height:72px; padding:10px 5px; background:var(--surface); font-size:clamp(.7rem,2.7vw,.85rem); line-height:1.25; font-weight:700; color:var(--muted); }
+.merchant-queue-summary > button b { font-size:1.15rem; line-height:1; }
 .merchant-queue-summary > button[aria-pressed=true] { border-color:var(--orange); color:var(--orange); background:var(--soft); }
 .merchant-queue-summary > button[aria-pressed=true] b { color:var(--orange); }

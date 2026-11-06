@@ -32,7 +32,33 @@ export function customer(context) {
   let ordersTimer;
   let orderStream;
   let previousView;
+  let drawer;
+  let openOrderId = null;
   const route = () => location.hash.slice(1) || 'inicio';
+
+  function closeMenu() {
+    if (drawer?.open) drawer.close();
+  }
+
+  function openMenu() {
+    if (!drawer) {
+      drawer = document.createElement('dialog');
+      drawer.id = 'customer-navigation';
+      drawer.className = 'merchant-drawer';
+      drawer.setAttribute('aria-labelledby','customer-menu-title');
+      document.body.append(drawer);
+      drawer.addEventListener('click',event => {
+        if (event.target === drawer || event.target.closest('[data-close-menu]') || event.target.closest('a')) closeMenu();
+      });
+      drawer.addEventListener('close',() => $('[data-customer-menu]')?.setAttribute('aria-expanded','false'));
+    }
+    drawer.innerHTML = '<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="customer-menu-title">Cliente</h2></div>' +
+      '<button class="icon-button" data-close-menu aria-label="Fechar menu">' + icon('close') + '</button></div>' +
+      '<nav aria-label="Áreas do cliente">' + [['pedidos','Pedidos','bag'],['enderecos','Endereços','pin']].map(([key,label,symbol]) =>
+        '<a href="#' + key + '"' + (route() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) + label + '</a>').join('') + '</nav>';
+    drawer.showModal();
+    $('[data-customer-menu]')?.setAttribute('aria-expanded','true');
+  }
 
   function updateHeader() {
     $('#cart-count').textContent = Object.values(cart.items).reduce((sum, amount) => sum + amount, 0);
@@ -353,8 +379,9 @@ export function customer(context) {
           if (changed) toast(changed.store + ' · ' + statuses[changed.status]);
         }
         statusByOrder = new Map(orders.map(order => [order.id,order.status]));
-        const markup = orders.length ? '<div class="order-grid">' + orders.map(order => orderCard(order,
-          order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true,timeline:true,progress:true })).join('') +
+        if (openOrderId && !orders.some(order => order.id === openOrderId)) openOrderId = null;
+        const markup = orders.length ? '<div class="order-grid customer-order-grid">' + orders.map(order => orderCard(order,
+          order.status === 'placed' ? transitionButton(order,'cancelled','Cancelar pedido','outline') : '',{ address:true,timeline:true,progress:true,compact:true,customerView:true,expanded:order.id === openOrderId })).join('') +
           '</div>' : '<div class="panel">' + empty('Nenhum pedido ainda','Explore os cardápios para começar.') + '</div>';
         if (list.innerHTML !== markup) list.innerHTML = markup;
       } catch (err) {
@@ -364,6 +391,18 @@ export function customer(context) {
         if (queued && list.isConnected) { queued = false; refreshOrders(); }
       }
     }
+    list.addEventListener('click',event => {
+      const toggle = event.target.closest('[data-toggle-order]');
+      if (!toggle) return;
+      openOrderId = openOrderId === toggle.dataset.toggleOrder ? null : toggle.dataset.toggleOrder;
+      for (const button of list.querySelectorAll('[data-toggle-order]')) {
+        const expanded = button.dataset.toggleOrder === openOrderId;
+        button.setAttribute('aria-expanded',String(expanded));
+        button.textContent = expanded ? 'Recolher' : 'Visualizar';
+        button.setAttribute('aria-label',(expanded ? 'Recolher' : 'Visualizar') + ' pedido #' + button.dataset.toggleOrder.slice(0,8));
+        document.getElementById(button.getAttribute('aria-controls')).hidden = !expanded;
+      }
+    });
     bindTransitions(list,refreshOrders);
     refreshOrders();
     orderStream = new EventSource('/api/order-updates');
@@ -382,6 +421,7 @@ export function customer(context) {
     clearInterval(ordersTimer);
     orderStream?.close();
     const view = route();
+    if (view !== previousView) openOrderId = null;
     if (view === 'pedidos') orderView();
     else if (view === 'enderecos') addressView();
     else if (view === 'carrinho' && loaded) cartView();
@@ -412,11 +452,14 @@ export function customer(context) {
   window.addEventListener('focus',refreshCatalog);
   function stop() {
     active = false;
+    closeMenu();
+    drawer?.remove();
+    drawer = null;
     clearInterval(ordersTimer);
     orderStream?.close();
     window.removeEventListener('resize',resizeCategories);
     window.removeEventListener('hashchange',refreshCatalog);
     window.removeEventListener('focus',refreshCatalog);
   }
-  return { render, stop, updateHeader };
+  return { render, stop, updateHeader, openMenu, closeMenu };
 }

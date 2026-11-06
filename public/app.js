@@ -20,21 +20,15 @@ function header() {
   const clientReady = page === 'cliente' && profile;
   const workspace = page === 'cliente' ? '' : '<span class="workspace-label">' + esc(titles[page]) + '</span>';
   $('#top').innerHTML = '<div class="wrap topbar">' +
+    (clientReady ? '<button class="icon-button customer-menu-button" data-customer-menu aria-label="Abrir menu do cliente" aria-controls="customer-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     (page === 'loja' ? '<button class="icon-button merchant-menu-button" data-merchant-menu aria-label="Abrir menu do estabelecimento" aria-controls="merchant-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
-    (clientReady ? '<div class="customer-menu"><button class="icon-button" data-customer-menu aria-label="Abrir menu do cliente" aria-expanded="false" aria-controls="customer-navigation">' +
-      icon('more') + '</button><nav id="customer-navigation" aria-label="Opções do cliente" hidden><a href="#pedidos">' + icon('bag') +
-      ' Pedidos</a><a href="#enderecos">' + icon('pin') + ' Endereços</a></nav></div>' : '') +
     (page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
     (current ? 'Minha conta' : 'Entrar') + '">' + icon('person') + '</button>' : '') +
     (clientReady ? '<a class="cart-button" href="#carrinho" aria-label="Carrinho">' + icon('bag') +
     '<span id="cart-count">0</span></a>' : '') + '</nav></div>';
   const customerMenu = $('[data-customer-menu]');
-  if (customerMenu) customerMenu.onclick = () => {
-    const expanded = customerMenu.getAttribute('aria-expanded') !== 'true';
-    customerMenu.setAttribute('aria-expanded',String(expanded));
-    $('#customer-navigation').hidden = !expanded;
-  };
+  if (customerMenu) customerMenu.onclick = () => app.openMenu();
   const menuButton = $('[data-merchant-menu]');
   if (menuButton) menuButton.onclick = () => app.openMenu();
   const button = $('[data-account]');
@@ -221,20 +215,7 @@ window.addEventListener('beforeinstallprompt', event => {
   installEvent = event;
 });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
-function closeCustomerMenu() {
-  $('[data-customer-menu]')?.setAttribute('aria-expanded','false');
-  if ($('#customer-navigation')) $('#customer-navigation').hidden = true;
-}
-document.addEventListener('click',event => {
-  if (!event.target.closest('.customer-menu') || event.target.closest('#customer-navigation a')) closeCustomerMenu();
-});
-document.addEventListener('keydown',event => {
-  if (event.key === 'Escape' && $('[data-customer-menu]')?.getAttribute('aria-expanded') === 'true') {
-    closeCustomerMenu();
-    $('[data-customer-menu]').focus();
-  }
-});
-window.addEventListener('hashchange', () => { closeCustomerMenu(); app?.render(); openActivation(); });
+window.addEventListener('hashchange', () => { app?.closeMenu?.(); app?.render(); openActivation(); });
 window.addEventListener('offline', () => toast('Você está offline.'));
 main.addEventListener('click', event => {
   if (event.target.closest('[data-signin]')) auth();

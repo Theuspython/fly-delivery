@@ -132,11 +132,11 @@ export function orderCard(order, actions = '', options = {}) {
     '<strong>' + money(order.subtotal + order.fee) +
     '</strong></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '');
   if (options.compact) {
-    const detailsId = 'merchant-order-' + order.id;
+    const detailsId = (options.customerView ? 'customer-order-' : 'merchant-order-') + order.id;
     const expanded = Boolean(options.expanded);
     return '<article class="order-card compact-order order-stage-' + esc(order.status) + '"><div class="compact-order-head">' +
       '<div><span class="overline">Pedido #' + esc(order.id.slice(0,8)) + '</span><h3>' +
-      esc(order.customer_name || 'Cliente') + '</h3></div><div class="compact-order-controls"><span class="status status-' +
+      esc(options.customerView ? order.store : order.customer_name || 'Cliente') + '</h3></div><div class="compact-order-controls"><span class="status status-' +
       esc(order.status) + '">' + esc(statuses[order.status]) + '</span>' +
       '<button class="btn outline" data-toggle-order="' + esc(order.id) + '" aria-controls="' + esc(detailsId) +
       '" aria-expanded="' + expanded + '" aria-label="' + (expanded ? 'Recolher' : 'Visualizar') + ' pedido #' +
