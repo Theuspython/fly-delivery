@@ -29,7 +29,9 @@ function header() {
     page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
     (current ? 'Minha conta' : 'Entrar') + '">' + icon('person') + '</button>' : '') +
     (clientReady ? '<a class="cart-button" href="#carrinho" aria-label="Carrinho">' + icon('bag') +
-    '<span id="cart-count">0</span></a>' : '') + '</nav></div>';
+    '<span id="cart-count">0</span></a>' : '') + '</nav></div>' +
+    '<div class="install-banner" data-install-container><button class="btn primary top-install" data-install>' + icon('install') + ' Instalar app</button></div>';
+  installer.bind($('[data-install]',$('#top')));
   const customerMenu = $('[data-customer-menu]');
   if (customerMenu) customerMenu.onclick = () => app.openMenu();
   const menuButton = $('[data-merchant-menu]');
@@ -44,10 +46,7 @@ function header() {
 }
 
 function footer() {
-  $('#footer').innerHTML = '<div class="wrap footer-inner"><div>' + brand() +
-    '<p>' + (page === 'cliente' ? 'Seu próximo pedido está a um toque.' : esc(titles[page])) + '</p></div>' +
-    '<button class="footer-install" data-install>' + icon('install') + ' Instalar app</button></div>';
-  installer.bind($('[data-install]'));
+  $('#footer').innerHTML = '<div class="wrap footer-inner">' + brand() + '</div>';
 }
 
 const nameInput = '<label>Nome completo<input name="name" autocomplete="name" minlength="3" maxlength="120" required></label>';

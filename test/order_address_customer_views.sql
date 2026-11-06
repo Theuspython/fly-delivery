@@ -58,6 +58,13 @@ begin
  if exists(select 1 from jsonb_array_elements(page_one->'orders') a join jsonb_array_elements(page_two->'orders') b on a->>'id'=b->>'id') then raise exception 'History pages overlap';end if;
  if exists(select 1 from jsonb_array_elements(page_one->'orders') x where x->>'status' not in ('delivered','cancelled')) then raise exception 'Active order entered history';end if;
  if jsonb_array_length(public.fd_api('customer_order_history','{"page":3}')->'orders')<>9 then raise exception 'Last history page incomplete';end if;
+ page_one:=public.fd_api('customer_order_history','{"page":0,"page_size":4}');page_two:=public.fd_api('customer_order_history','{"page":1,"page_size":4}');
+ if jsonb_array_length(page_one->'orders')<>4 or page_one->>'pages'<>'21' or page_one->>'count'<>'84' or page_one->>'page_size'<>'4' then raise exception 'Small history batches incorrect';end if;
+ if exists(select 1 from jsonb_array_elements(page_one->'orders') a join jsonb_array_elements(page_two->'orders') b on a->>'id'=b->>'id') then raise exception 'History batches overlap';end if;
+ if jsonb_array_length(public.fd_api('customer_order_history','{"page":20,"page_size":4}')->'orders')<>4 then raise exception 'Last small batch incorrect';end if;
+ begin perform public.fd_api('customer_order_history','{"page_size":0}');raise exception 'Zero batch size accepted';exception when raise_exception then if sqlerrm not like 'FD: Página inválida%' then raise;end if;end;
+ begin perform public.fd_api('customer_order_history','{"page_size":100000}');raise exception 'Unbounded batch size accepted';exception when raise_exception then if sqlerrm not like 'FD: Página inválida%' then raise;end if;end;
+
  perform set_config('request.jwt.claim.sub',other_buyer::text,true);
  if public.fd_api('customer_active_orders')->>'count'<>'0' or public.fd_api('customer_order_history',jsonb_build_object('customer_id',buyer))->>'count'<>'0' then raise exception 'Other customer accessed private orders';end if;
  perform set_config('request.jwt.claim.sub',other_merchant::text,true);

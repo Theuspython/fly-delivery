@@ -45,6 +45,12 @@ begin
       (buyer,other_shop,gen_random_uuid(),'delivered','Endereço teste',-19.91,-43.91,'cash_delivery',99999,999,1);
   update fly_delivery.orders set completed_at='2026-11-05 12:00:00-03' where status='cancelled' or store_id=other_shop;
   update fly_delivery.customer_profiles set full_name='Nome atualizado' where user_id=buyer;
+  -- Legacy sales have no commission. Two newer sales keep their individual rate snapshots.
+  update fly_delivery.orders set commission_bps=null,platform_fee_cents=null where store_id=shop;
+  update fly_delivery.orders set
+    commission_bps=case when completed_at='2026-11-05 00:00:00-03' then 1000 else 2500 end,
+    platform_fee_cents=case when completed_at='2026-11-05 00:00:00-03' then 150 else 375 end
+    where store_id=shop and status='delivered' and completed_at>='2026-11-05 00:00:00-03' and completed_at<'2026-11-06 00:00:00-03';
 
   perform set_config('request.jwt.claim.sub',merchant::text,true);
   result:=public.fd_api('merchant_active_orders');
@@ -59,10 +65,22 @@ begin
   if result->>'count'<>'2' or result->>'products'<>'3000' or result->>'delivery'<>'700' or result->>'total'<>'3700' then
     raise exception 'Daily accounting or timezone boundary incorrect';
   end if;
+  if result->>'platform'<>'525' or result->>'net'<>'3175' or result->'days'->0->>'platform'<>'525' or result->'days'->0->>'net'<>'3175' then
+    raise exception 'Daily platform commission or net incorrect';
+  end if;
+  if (select sum((item->>'platform')::bigint) from jsonb_array_elements(result->'orders') item)<>525
+    or exists(select 1 from jsonb_array_elements(result->'orders') item where (item->>'net')::bigint<>(item->>'subtotal')::bigint+(item->>'fee')::bigint-(item->>'platform')::bigint) then
+    raise exception 'Per-order commission snapshot or net incorrect';
+  end if;
   result:=public.fd_api('merchant_finance','{"date_from":"2026-11-04","date_to":"2026-11-05","page":3}');
   if result->>'count'<>'86' or jsonb_array_length(result->'orders')<>11 then
     raise exception 'Date range aggregation or ledger pagination incorrect';
   end if;
+  if result->>'platform'<>'525' or result->>'net'<>'103975' or result->'days'->1->>'platform'<>'0' then
+    raise exception 'Range totals must include all pages and exclude legacy commission';
+  end if;
+  result:=public.fd_api('merchant_finance','{"date_from":"2001-01-01","date_to":"2001-01-01"}');
+  if result->>'platform'<>'0' or result->>'net'<>'0' or result->>'count'<>'0' then raise exception 'Empty finance should return zero';end if;
   update fly_delivery.orders set status='delivered' where id=active_order;
   if jsonb_array_length(public.fd_api('merchant_active_orders'))<>1 then raise exception 'Delivered order stayed in queue'; end if;
   result:=public.fd_api('merchant_history','{"status":"cancelled"}');

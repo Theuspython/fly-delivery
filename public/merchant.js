@@ -45,20 +45,22 @@ function financeMarkup(data) {
     ['Pedidos entregues',String(data.count)],
     ['Vendas em produtos',money(data.products)],
     ['Taxas de entrega',money(data.delivery)],
-    ['Total dos pedidos',money(data.total)]
+    ['Total dos pedidos',money(data.total)],
+    ['Comissão Fly Delivery',money(data.platform)],
+    ['Líquido após comissão',money(data.net)]
   ].map(([label,value]) => '<article class="panel"><p>' + label + '</p><strong>' + value + '</strong></article>').join('') +
     '</div><p class="muted finance-note">Pedidos entregues entre ' + dateLabel(data.date_from) + ' e ' + dateLabel(data.date_to) +
-    '. Valores registrados no pedido, com a entrega separada dos produtos.</p>';
+    '. Comissão registrada em cada venda, sem incluir a entrega na base de cálculo. O líquido é o total dos pedidos menos a comissão, independentemente do pagamento das faturas.</p>';
   if (!data.count) return summary + '<div class="panel">' + empty('Nenhuma venda concluída','As vendas aparecerão após a confirmação da entrega.','grid') + '</div>';
   return summary + '<div class="panel"><h2>Vendas por dia</h2><div class="merchant-table-scroll"><table class="merchant-table">' +
-    '<thead><tr><th>Dia</th><th>Pedidos</th><th>Produtos</th><th>Entrega</th><th>Total</th></tr></thead><tbody>' +
+    '<thead><tr><th>Dia</th><th>Pedidos</th><th>Produtos</th><th>Entrega</th><th>Total</th><th>Comissão Fly Delivery</th><th>Líquido</th></tr></thead><tbody>' +
     data.days.map(day => '<tr><td>' + dateLabel(day.day) + '</td><td>' + day.amount + '</td><td>' +
-      money(day.products) + '</td><td>' + money(day.delivery) + '</td><td>' + money(day.total) + '</td></tr>').join('') +
+      money(day.products) + '</td><td>' + money(day.delivery) + '</td><td>' + money(day.total) + '</td><td>' + money(day.platform) + '</td><td>' + money(day.net) + '</td></tr>').join('') +
     '</tbody></table></div></div><div class="panel finance-ledger"><h2>Pedidos do período</h2><div class="merchant-table-scroll">' +
-    '<table class="merchant-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Entregue em</th><th>Produtos</th><th>Entrega</th><th>Total</th></tr></thead><tbody>' +
+    '<table class="merchant-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Entregue em</th><th>Produtos</th><th>Entrega</th><th>Total</th><th>Comissão Fly Delivery</th><th>Líquido</th></tr></thead><tbody>' +
     data.orders.map(order => '<tr><td>#' + esc(order.id.slice(0,8)) + '</td><td>' +
       esc(order.customer_name) + '</td><td>' + timestamp(order.completed_at) + '</td><td>' + money(order.subtotal) +
-      '</td><td>' + money(order.fee) + '</td><td>' + money(order.subtotal+order.fee) + '</td></tr>').join('') +
+      '</td><td>' + money(order.fee) + '</td><td>' + money(order.subtotal+order.fee) + '</td><td>' + money(order.platform) + '</td><td>' + money(order.net) + '</td></tr>').join('') +
     '</tbody></table></div>' + pagination(data) + '</div>';
 }
 

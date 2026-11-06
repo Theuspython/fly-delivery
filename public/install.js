@@ -10,6 +10,9 @@ export function setupInstall() {
 
   function update() {
     for (const button of document.querySelectorAll('[data-install]')) {
+      button.hidden=installed;
+      const container=button.closest('[data-install-container]');
+      if (container) container.hidden=installed;
       button.innerHTML=icon('install') + ' ' + (installed ? 'App instalado' : busy ? 'Instalando…' : 'Instalar app');
       button.disabled=installed || busy;
     }
@@ -61,13 +64,16 @@ export function setupInstall() {
   }
 
   window.addEventListener('beforeinstallprompt',event=>{
-    event.preventDefault();pending=event;update();
+    event.preventDefault();pending=event;
+    // A new eligibility event also allows reinstalling after removal, without a saved flag.
+    installed=mode.matches || navigator.standalone===true;
+    update();
   });
   window.addEventListener('appinstalled',()=>{
     installed=true;pending=null;busy=false;update();
     if ($('[data-native-install]')) $('#dialog').close();
   });
-  mode.addEventListener?.('change',()=>{if(mode.matches){installed=true;update();}});
+  mode.addEventListener?.('change',()=>{installed=mode.matches || navigator.standalone===true;update();});
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
 
   return {bind(button){button.onclick=request;update();}};
