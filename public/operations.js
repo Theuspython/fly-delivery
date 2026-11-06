@@ -3,7 +3,6 @@ import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit, geo,
   categories, empty, orderCard, transitionButton, bindTransitions } from './shared.js';
 
 const profiles = {
-  loja:{ role:'merchant', title:'Painel da loja', label:'ESTABELECIMENTO', symbol:'store', intro:'Organize seu cardápio e acompanhe o preparo dos pedidos.' },
   entregador:{ role:'courier', title:'Entregas', label:'ENTREGADOR', symbol:'bike', intro:'Fique disponível para receber entregas próximas e acompanhe sua próxima retirada.' },
   admin:{ role:'admin', title:'Administração', label:'GESTÃO FLY DELIVERY', symbol:'shield', intro:'Cadastre estabelecimentos e crie acessos para lojas e entregadores.' }
 };
@@ -59,7 +58,7 @@ function registrationForm(kind,done,legacyStore) {
   });
 }
 
-function storeSettings(store,done) {
+export function storeSettings(store,done) {
   let selected = Number.isFinite(store.lat) && Number.isFinite(store.lng) ? { lat:store.lat,lng:store.lng } : null;
   let map;
   let image = store.image;
@@ -142,7 +141,7 @@ function storeSettings(store,done) {
   });
 }
 
-function productForm(store, product, done) {
+export function productForm(store, product, done) {
   let photo = product?.image;
   let selectedFile;
   const el = modal(product ? 'Editar produto' : 'Adicionar produto',
@@ -170,7 +169,7 @@ function productForm(store, product, done) {
   });
 }
 
-function storeMarkup(store, role) {
+export function storeMarkup(store, role, productsOnly = false) {
   const labels = esc((store.categories ?? [store.category]).join(' · '));
   if (role === 'admin') {
     return '<article class="panel management-card"><span class="overline">' + labels + '</span><h3>' + esc(store.name) +
@@ -178,8 +177,8 @@ function storeMarkup(store, role) {
       (!store.owner_login ? '<div class="order-actions"><button class="btn outline" data-link-store="' + esc(store.id) +
         '">Criar login</button></div>' : '') + '</article>';
   }
-  const actions = '<button class="btn outline" data-settings="' + esc(store.id) + '">Foto e horários</button>' +
-    (store.address ? '<button class="btn outline" data-open="' + esc(store.id) + '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '') +
+  const actions = (productsOnly ? '' : '<button class="btn outline" data-settings="' + esc(store.id) + '">Foto e horários</button>' +
+    (store.address ? '<button class="btn outline" data-open="' + esc(store.id) + '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '')) +
     '<button class="btn primary" data-add-product="' + esc(store.id) + '">' + icon('plus') + ' Produto</button>';
   return '<article class="panel management-card"><div class="management-head"><div><span class="overline">' + labels +
     '</span><h3>' + esc(store.name) + '</h3><p>' + esc(store.address || 'Configure a retirada e os horários para publicar.') + '</p></div><span class="status ' +
@@ -192,11 +191,6 @@ function storeMarkup(store, role) {
       '<p class="muted">Nenhum produto cadastrado.</p>') + '</div></article>';
 }
 
-function merchantActions(order) {
-  return (order.status === 'placed' ? transitionButton(order,'preparing','Confirmar e preparar') : '') +
-    (order.status === 'preparing' ? transitionButton(order,'ready','Pedido pronto · chamar motoboy') : '') +
-    (['placed','preparing','ready'].includes(order.status) ? transitionButton(order,'cancelled','Cancelar','outline') : '');
-}
 function courierActions(order) {
   if (order.status === 'assigned') return mapsLink(order.pickup_lat,order.pickup_lng,'Ir até a loja') +
     transitionButton(order,'picked_up','Confirmar retirada');
@@ -269,7 +263,7 @@ export function operations(page, context) {
       const orderTitle = page === 'entregador' ? 'Minhas entregas' : 'Pedidos da operação';
       updateRegion('ops-orders','<div class="section-head"><h2>' + orderTitle + '</h2></div>' +
         (orders.length ? '<div class="order-grid">' + orders.map(order => orderCard(order,
-          page === 'entregador' ? courierActions(order) : merchantActions(order),
+          courierActions(order),
           { address:page !== 'entregador' || order.status !== 'delivered' })).join('') + '</div>' :
           '<div class="panel">' + empty('Nenhum pedido por aqui','Os pedidos aparecerão nesta área.') + '</div>'),force);
       if (page === 'entregador') {

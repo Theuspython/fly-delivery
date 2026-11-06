@@ -122,14 +122,23 @@ export function orderCard(order, actions = '', options = {}) {
     '<p>' + (order.items ?? []).map(item => item.quantity + '× ' + esc(item.name)).join(' · ') + '</p>' +
     (options.address ? '<p>' + icon('pin') + ' ' + esc(order.address) + '</p>' : '') +
     '<p>' + esc(payments[order.payment]) + '</p>';
+  const customer = options.customer ? '<p class="order-customer"><strong>' + esc(order.customer_name || 'Cliente') + '</strong></p>' : '';
+  const stages = ['placed','preparing','ready','assigned','picked_up','delivered'];
+  const stageLabels = ['Recebido','Em preparo','Pronto','Motoboy aceitou','Saiu para entrega','Entregue'];
+  const currentStage = stages.indexOf(order.status);
+  const progress = options.progress && order.status !== 'cancelled'
+    ? '<ol class="order-progress" aria-label="Etapas do pedido">' + stages.map((stage,index) =>
+      '<li class="' + (index < currentStage ? 'done' : index === currentStage ? 'current' : 'waiting') + '"' +
+      (index === currentStage ? ' aria-current="step"' : '') + '><span>' + (index < currentStage ? icon('check') : index+1) +
+      '</span>' + stageLabels[index] + '</li>').join('') + '</ol>' : '';
   const timeline = options.timeline && order.events?.length
     ? '<ol class="order-timeline" aria-label="Andamento do pedido">' + order.events.map(event =>
       '<li><span>' + esc(statuses[event.status]) + '</span><time datetime="' + esc(event.created_at) + '">' +
       new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(event.created_at)) + '</time></li>').join('') + '</ol>'
     : '';
-  return '<article class="order-card"><div class="order-head"><div><span class="overline">#' + esc(order.id.slice(0,8)) +
+  return '<article class="order-card' + (options.progress ? ' order-stage-' + esc(order.status) : '') + '"><div class="order-head"><div><span class="overline">#' + esc(order.id.slice(0,8)) +
     '</span><h3>' + esc(order.store) + '</h3></div><span class="status status-' + esc(order.status) + '">' +
-    esc(options.offer ? 'Disponível' : statuses[order.status]) + '</span></div><div class="order-body">' + details +
+    esc(options.offer ? 'Disponível' : statuses[order.status]) + '</span></div>' + customer + progress + '<div class="order-body">' + details +
     '<strong>' + money(options.offer ? order.fee : order.subtotal + order.fee) + (options.offer ? ' pela entrega' : '') +
     '</strong></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '') + '</article>';
 }

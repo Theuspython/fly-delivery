@@ -1,6 +1,7 @@
 import { $, main, esc, icon, api, command, modal, toast, bindSubmit } from './shared.js';
 import { customer } from './customer.js';
 import { operations } from './operations.js';
+import { merchant } from './merchant.js';
 
 const page = location.pathname.split('/')[1] || 'cliente';
 const titles = { cliente:'Cliente', loja:'Estabelecimento', entregador:'Entregador', admin:'Administração' };
@@ -18,12 +19,16 @@ function brand() {
 function header() {
   const clientReady = page === 'cliente' && profile;
   const workspace = page === 'cliente' ? '' : '<span class="workspace-label">' + esc(titles[page]) + '</span>';
-  $('#top').innerHTML = '<div class="wrap topbar">' + brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
+  $('#top').innerHTML = '<div class="wrap topbar">' +
+    (page === 'loja' ? '<button class="icon-button merchant-menu-button" data-merchant-menu aria-label="Abrir menu do estabelecimento" aria-controls="merchant-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
+    brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
     (clientReady ? '<a class="order-shortcut" href="#pedidos">Pedidos</a>' : '') +
     (page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
     (current ? 'Minha conta' : 'Entrar') + '">' + icon('person') + '</button>' : '') +
     (clientReady ? '<a class="cart-button" href="#carrinho" aria-label="Carrinho">' + icon('bag') +
     '<span id="cart-count">0</span></a>' : '') + '</nav></div>';
+  const menuButton = $('[data-merchant-menu]');
+  if (menuButton) menuButton.onclick = () => app.openMenu();
   const button = $('[data-account]');
   if (button) button.onclick = () => current ? account() : auth();
   if (clientReady) app.updateHeader();
@@ -190,7 +195,7 @@ function openActivation() {
 }
 
 const context = { get user() { return current; }, signIn:auth };
-app = page === 'cliente' ? null : operations(page,context);
+app = page === 'cliente' ? null : page === 'loja' ? merchant(context) : operations(page,context);
 footer();
 renderApp();
 openActivation();
