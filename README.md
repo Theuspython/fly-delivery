@@ -49,3 +49,7 @@ Coordenadas, vínculos e status antigos são preservados no histórico. Pedidos 
 No cliente, o menu lateral de três traços reúne Pedidos e Endereços, com o mesmo estilo do estabelecimento. Os cards de pedidos ficam recolhidos e exibem os detalhes ao clicar em Visualizar. O endereço principal fica salvo na conta do cliente; um endereço usado apenas em uma entrega não substitui o principal. O cardápio permite aumentar e reduzir quantidades, e as categorias rolam para alinhar a opção selecionada.
 
 Minha conta fica no menu lateral do cliente e permite enviar uma foto JPG, PNG ou WebP de até 3 MB. As fotos usam armazenamento privado, com leitura pelo próprio cliente e pelos estabelecimentos com pedidos desse cliente. A casinha no cabeçalho retorna à vitrine completa sem alterar o carrinho.
+
+Na administração, Editar altera nome e categorias do estabelecimento. Excluir retira a loja da vitrine e da operação, mantém produtos e pedidos finalizados no histórico e bloqueia o acesso se não houver outra loja vinculada. Pedidos em andamento precisam ser finalizados ou cancelados antes da exclusão.
+
+O botão Instalar app captura a disponibilidade de instalação antes da consulta de login e solicita a confirmação nativa nos navegadores compatíveis. Se a liberação chegar depois do clique, o botão da janela fica disponível para confirmar. No Safari do iPhone/iPad, são exibidas as instruções de Compartilhar e Adicionar à Tela de Início. A janela nativa depende da elegibilidade e do suporte do navegador.

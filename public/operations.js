@@ -50,6 +50,32 @@ function registrationForm(kind,done,legacyStore) {
   });
 }
 
+function editStoreForm(store,done) {
+  const el=modal('Editar estabelecimento','<form class="form-stack" id="edit-store-form"><label>Nome do estabelecimento<input name="name" minlength="2" maxlength="80" required value="' + esc(store.name) + '"></label>' +
+    '<fieldset class="operator-categories"><legend>Categorias</legend>' + categories.slice(1).map(([name]) =>
+      '<label class="check"><input type="checkbox" name="category" value="' + esc(name) + '"' +
+      ((store.categories ?? [store.category]).includes(name) ? ' checked' : '') + '> ' + esc(name) + '</label>').join('') + '</fieldset>' +
+    (store.owner_login ? '<p class="muted">Login da loja: ' + esc(store.owner_login) + '</p>' : '') + formEnd('Salvar alterações') + '</form>');
+  bindSubmit($('#edit-store-form',el),async fields => {
+    const selected=fields.getAll('category');
+    if (!selected.length) throw new Error('Selecione pelo menos uma categoria.');
+    await command('admin_update_store',{id:store.id,name:fields.get('name'),categories:selected});
+    el.close();toast('Estabelecimento atualizado.');await done();
+  });
+}
+
+function deleteStoreForm(store,done) {
+  const el=modal('Excluir estabelecimento','<form class="form-stack" id="delete-store-form"><p>Excluir <strong>' + esc(store.name) +
+    '</strong> da operação?</p><p class="muted">A loja sairá da vitrine. Produtos e histórico de pedidos finalizados serão preservados.</p>' +
+    '<p class="form-error" data-form-error role="alert"></p><div class="order-actions"><button type="button" class="btn outline" data-cancel-delete>Voltar</button>' +
+    '<button type="submit" class="btn danger">Excluir estabelecimento</button></div></form>');
+  $('[data-cancel-delete]',el).onclick=()=>el.close();
+  bindSubmit($('#delete-store-form',el),async()=>{
+    await command('admin_delete_store',{id:store.id});
+    el.close();toast('Estabelecimento excluído.');await done();
+  });
+}
+
 export function storeSettings(store,done) {
   let image = store.image;
   let uploadedFile;
@@ -132,8 +158,9 @@ export function storeMarkup(store, role, productsOnly = false) {
   if (role === 'admin') {
     return '<article class="panel management-card"><span class="overline">' + labels + '</span><h3>' + esc(store.name) +
       '</h3><p>' + (store.owner_login ? 'Login: ' + esc(store.owner_login) : 'Acesso a configurar') + '</p>' +
-      (!store.owner_login ? '<div class="order-actions"><button class="btn outline" data-link-store="' + esc(store.id) +
-        '">Criar login</button></div>' : '') + '</article>';
+      '<div class="order-actions"><button class="btn outline" data-admin-edit="' + esc(store.id) + '">Editar</button>' +
+      '<button class="btn outline danger-text" data-admin-delete="' + esc(store.id) + '">Excluir</button>' +
+      (!store.owner_login ? '<button class="btn outline" data-link-store="' + esc(store.id) + '">Criar login</button>' : '') + '</div></article>';
   }
   const actions = (productsOnly ? '' : '<button class="btn outline" data-settings="' + esc(store.id) + '">Foto e horários</button>' +
     (store.address ? '<button class="btn outline" data-open="' + esc(store.id) + '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '')) +
@@ -198,6 +225,8 @@ export function operations(page, context) {
     body.addEventListener('click',event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
+      if (button.dataset.adminEdit) editStoreForm(storeList.find(store=>store.id===button.dataset.adminEdit),()=>refresh(true));
+      if (button.dataset.adminDelete) deleteStoreForm(storeList.find(store=>store.id===button.dataset.adminDelete),()=>refresh(true));
       if (button.hasAttribute('data-add-store') || button.dataset.linkStore) {
         registrationForm('store',() => refresh(true),storeList.find(store => store.id === button.dataset.linkStore));
       }

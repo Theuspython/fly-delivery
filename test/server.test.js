@@ -29,7 +29,7 @@ test('health and distinct PWA entry points', async () => {
 });
 
 test('PWA assets work and retired courier/maps entry points are unavailable', async () => {
-  for (const path of ['/assets/icon-192.png','/sw.js']) {
+  for (const path of ['/assets/icon-192.png','/sw.js','/install.js']) {
     const response = await fetch(origin + path);
     assert.equal(response.status,200,path);
     assert.ok((await response.arrayBuffer()).byteLength > 100,path);

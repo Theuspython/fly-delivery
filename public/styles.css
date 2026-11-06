@@ -373,3 +373,11 @@ p { line-height:1.5 }
 .account-profile p { font-size:.87rem; margin-top:5px; }
 .compact-order-identity { display:flex; align-items:center; gap:9px; min-width:0; }
 .compact-order-identity > div { min-width:0; }
+
+.btn.danger { background:#af2929; color:white; border-color:#af2929; }
+.btn.danger:hover { background:#902020; }
+.danger-text { color:#a72b28; }
+
+.install-steps { padding-left:24px; margin:14px 0 0; }
+.install-steps li { padding-left:5px; line-height:1.6; margin-bottom:13px; }
+.install-note { margin-top:14px; font-size:.85rem; }

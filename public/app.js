@@ -1,4 +1,5 @@
 import { $, main, esc, icon, api, command, modal, toast, bindSubmit, profileAvatar } from './shared.js';
+import { setupInstall } from './install.js';
 import { customer } from './customer.js';
 import { operations } from './operations.js';
 import { merchant } from './merchant.js';
@@ -6,7 +7,7 @@ import { merchant } from './merchant.js';
 const page = location.pathname.split('/')[1] || 'cliente';
 const titles = { cliente:'Cliente', loja:'Estabelecimento', admin:'Administração' };
 let current = null;
-let installEvent;
+const installer = setupInstall();
 let app;
 let profile;
 let checkedSession = page !== 'cliente';
@@ -43,14 +44,7 @@ function footer() {
   $('#footer').innerHTML = '<div class="wrap footer-inner"><div>' + brand() +
     '<p>' + (page === 'cliente' ? 'Seu próximo pedido está a um toque.' : esc(titles[page])) + '</p></div>' +
     '<button class="footer-install" data-install>' + icon('install') + ' Instalar app</button></div>';
-  $('[data-install]').onclick = async () => {
-    if (installEvent) {
-      await installEvent.prompt();
-      installEvent = null;
-    } else {
-      modal('Instalar Fly Delivery', '<p class="dialog-copy">Abra o menu do navegador e selecione <strong>Instalar app</strong> ou <strong>Adicionar à Tela de Início</strong>. No iPhone, use o botão Compartilhar do Safari.</p>');
-    }
-  };
+  installer.bind($('[data-install]'));
 }
 
 const nameInput = '<label>Nome completo<input name="name" autocomplete="name" minlength="3" maxlength="120" required></label>';
@@ -249,11 +243,6 @@ try {
   renderApp();
 }
 
-window.addEventListener('beforeinstallprompt', event => {
-  event.preventDefault();
-  installEvent = event;
-});
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 window.addEventListener('hashchange', () => { app?.closeMenu?.(); app?.render(); openActivation(); });
 window.addEventListener('offline', () => toast('Você está offline.'));
 main.addEventListener('click', event => {
