@@ -53,6 +53,39 @@ async function requestBody(req, maxBytes = limit) {
   return Buffer.concat(chunks);
 }
 
+async function readImage(req) {
+  const types = { 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp' };
+  const type = req.headers['content-type'];
+  if (!types[type]) throw new HttpError(400,'Envie uma foto JPG, PNG ou WebP.');
+  const bytes = await requestBody(req);
+  const valid = (type === 'image/jpeg' && bytes.subarray(0,3).toString('hex') === 'ffd8ff') ||
+    (type === 'image/png' && bytes.subarray(0,8).toString('hex') === '89504e470d0a1a0a') ||
+    (type === 'image/webp' && bytes.subarray(0,4).toString() === 'RIFF' && bytes.subarray(8,12).toString() === 'WEBP');
+  if (!valid) throw new HttpError(400,'A foto não corresponde ao formato informado.');
+  return { bytes,type,extension:types[type] };
+}
+
+const profilePhotoPath = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp)$/;
+
+async function serveProfilePhoto(req,res,url) {
+  if (req.headers['sec-fetch-site'] === 'cross-site') throw new HttpError(403,'Origem da requisição inválida.');
+  const scope = url.searchParams.get('scope');
+  const path = url.searchParams.get('path') ?? '';
+  if (!['cliente','loja'].includes(scope) || !profilePhotoPath.test(path)) throw new HttpError(400,'Foto inválida.');
+  const token = readCookies(req)['fd_' + scope + '_access'];
+  if (!token) throw new HttpError(401,'Entre para ver a foto.');
+  if (!supabase || !publishableKey) throw new HttpError(503,'As fotos estão indisponíveis.');
+  const response = await fetch(supabase + '/storage/v1/object/authenticated/fly-delivery-profiles/' + path,{
+    headers:{ apikey:publishableKey,Authorization:'Bearer ' + token },signal:AbortSignal.timeout(12000)
+  });
+  if (!response.ok) throw new HttpError(response.status === 401 ? 401 : 404,'Foto indisponível.');
+  const type = response.headers.get('content-type')?.split(';')[0];
+  if (!['image/jpeg','image/png','image/webp'].includes(type)) throw new HttpError(502,'Foto indisponível.');
+  const bytes = Buffer.from(await response.arrayBuffer());
+  res.writeHead(200,{ 'Content-Type':type,'Cache-Control':'private, no-store' });
+  res.end(bytes);
+}
+
 function readCookies(req) {
   return Object.fromEntries((req.headers.cookie ?? '').split(';').map(entry => {
     const index = entry.indexOf('=');
@@ -205,7 +238,7 @@ async function streamOrders(req,res) {
 }
 
 async function api(req, res, url) {
-  const isRead = req.method === 'GET' && ['/api/catalog','/api/order-updates'].includes(url.pathname);
+  const isRead = req.method === 'GET' && ['/api/catalog','/api/order-updates','/api/profile-photo'].includes(url.pathname);
   if (!isRead) {
     if (req.method !== 'POST') throw new HttpError(405, 'Método indisponível.');
     const origin = req.headers.origin;
@@ -213,6 +246,7 @@ async function api(req, res, url) {
       throw new HttpError(403, 'Origem da requisição inválida.');
     }
   }
+  if (url.pathname === '/api/profile-photo' && req.method === 'GET') return serveProfilePhoto(req,res,url);
   if (url.pathname === '/api/order-updates') return streamOrders(req,res);
   const { sessionCookie, refreshCookie } = cookiesFor(req);
   const cookies = readCookies(req);
@@ -310,20 +344,38 @@ async function api(req, res, url) {
     const data = await upstream('/rest/v1/rpc/fd_api', { token: access, body: { action, input:payload } });
     return json(res, 200, data);
   }
+  if (url.pathname === '/api/upload-profile') {
+    if (sessionCookie !== 'fd_cliente_access' || !access) throw new HttpError(401,'Entre como cliente para enviar sua foto.');
+    const { bytes,type,extension } = await readImage(req);
+    const user = await upstream('/rest/v1/rpc/fd_api',{ token:access,body:{ action:'session',input:{} } });
+    if (user?.role !== 'customer') throw new HttpError(403,'Foto exclusiva do perfil do cliente.');
+    const previous = await upstream('/rest/v1/rpc/fd_api',{ token:access,body:{ action:'customer_profile',input:{} } });
+    if (!previous) throw new HttpError(409,'Complete seu cadastro antes de enviar a foto.');
+    const key = user.id + '/' + crypto.randomUUID() + '.' + extension;
+    await upstream('/storage/v1/object/fly-delivery-profiles/' + key,{ token:access,body:bytes,type });
+    const remove = path => upstream('/storage/v1/object/fly-delivery-profiles',{
+      method:'DELETE',token:access,body:{ prefixes:[path] }
+    });
+    let updated;
+    try {
+      updated = await upstream('/rest/v1/rpc/fd_api',{ token:access,body:{ action:'save_customer_photo',input:{ path:key } } });
+    } catch (error) {
+      await remove(key).catch(() => {});
+      throw error;
+    }
+    if (previous.photo && profilePhotoPath.test(previous.photo) && previous.photo.startsWith(user.id + '/')) {
+      await remove(previous.photo).catch(() => {});
+    }
+    return json(res,201,updated);
+  }
   if (url.pathname === '/api/upload') {
-    if (!access) throw new HttpError(401, 'Entre para continuar.');
-    const types = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
-    const type = req.headers['content-type'];
+    if (!access) throw new HttpError(401,'Entre para continuar.');
     const store = url.searchParams.get('store') ?? '';
-    if (!types[type] || !/^[0-9a-f-]{36}$/.test(store)) throw new HttpError(400, 'Envie uma foto JPG, PNG ou WebP.');
-    const bytes = await requestBody(req);
-    const valid = (type === 'image/jpeg' && bytes.subarray(0, 3).toString('hex') === 'ffd8ff') ||
-      (type === 'image/png' && bytes.subarray(0, 8).toString('hex') === '89504e470d0a1a0a') ||
-      (type === 'image/webp' && bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP');
-    if (!valid) throw new HttpError(400, 'A foto não corresponde ao formato informado.');
-    const key = store + '/' + crypto.randomUUID() + '.' + types[type];
-    await upstream('/storage/v1/object/fly-delivery-menu/' + key, { token: access, body: bytes, type });
-    return json(res, 201, { url: supabase + '/storage/v1/object/public/fly-delivery-menu/' + key });
+    if (!/^[0-9a-f-]{36}$/.test(store)) throw new HttpError(400,'Envie uma foto JPG, PNG ou WebP.');
+    const { bytes,type,extension } = await readImage(req);
+    const key = store + '/' + crypto.randomUUID() + '.' + extension;
+    await upstream('/storage/v1/object/fly-delivery-menu/' + key,{ token:access,body:bytes,type });
+    return json(res,201,{ url:supabase + '/storage/v1/object/public/fly-delivery-menu/' + key });
   }
   throw new HttpError(404, 'Rota não encontrada.');
 }

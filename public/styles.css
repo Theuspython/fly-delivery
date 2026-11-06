@@ -278,8 +278,8 @@ p { line-height:1.5 }
 .merchant-drawer::backdrop { background:#251b1770; }
 .merchant-drawer h2 { font-size:1.5rem; margin-top:5px; }
 .merchant-drawer nav { display:grid; gap:7px; margin-top:25px; }
-.merchant-drawer nav a { display:flex; align-items:center; gap:10px; padding:13px 12px; border-radius:11px; font-weight:800; font-size:.94rem; }
-.merchant-drawer nav a:hover,.merchant-drawer nav a[aria-current=page] { color:var(--orange); background:var(--soft); }
+.merchant-drawer nav a,.merchant-drawer nav button { display:flex; align-items:center; gap:10px; padding:13px 12px; border-radius:11px; font-weight:800; font-size:.94rem; }
+.merchant-drawer nav a:hover,.merchant-drawer nav button:hover,.merchant-drawer nav a[aria-current=page] { color:var(--orange); background:var(--soft); }
 .merchant-drawer .icon { width:19px; height:19px; }
 .merchant-workspace h1 { font-size:clamp(2rem,4vw,3rem); margin:6px 0 8px; }
 .merchant-workspace h2 { font-size:1.4rem; }
@@ -363,3 +363,13 @@ p { line-height:1.5 }
 .merchant-queue-summary > button b { font-size:1.15rem; line-height:1; }
 .merchant-queue-summary > button[aria-pressed=true] { border-color:var(--orange); color:var(--orange); background:var(--soft); }
 .merchant-queue-summary > button[aria-pressed=true] b { color:var(--orange); }
+
+.merchant-drawer nav button { width:100%; border:0; background:transparent; color:inherit; text-align:left; }
+.profile-avatar { display:inline-flex; align-items:center; justify-content:center; flex:none; width:38px; height:38px; border-radius:50%; overflow:hidden; background:var(--soft); border:1px solid #f4d6c6; color:var(--orange); font-size:.78rem; font-weight:800; }
+.profile-avatar img { width:100%; height:100%; object-fit:cover; }
+.profile-avatar-large { width:82px; height:82px; font-size:1.6rem; }
+.account-profile { display:flex; align-items:center; gap:16px; margin:12px 0 23px; min-width:0; }
+.account-profile h3 { font-size:1.15rem; overflow-wrap:anywhere; }
+.account-profile p { font-size:.87rem; margin-top:5px; }
+.compact-order-identity { display:flex; align-items:center; gap:9px; min-width:0; }
+.compact-order-identity > div { min-width:0; }

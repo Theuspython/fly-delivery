@@ -1,4 +1,4 @@
-import { $, main, esc, icon, api, command, modal, toast, bindSubmit } from './shared.js';
+import { $, main, esc, icon, api, command, modal, toast, bindSubmit, profileAvatar } from './shared.js';
 import { customer } from './customer.js';
 import { operations } from './operations.js';
 import { merchant } from './merchant.js';
@@ -23,7 +23,8 @@ function header() {
     (clientReady ? '<button class="icon-button customer-menu-button" data-customer-menu aria-label="Abrir menu do cliente" aria-controls="customer-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     (page === 'loja' ? '<button class="icon-button merchant-menu-button" data-merchant-menu aria-label="Abrir menu do estabelecimento" aria-controls="merchant-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
-    (page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
+    (clientReady ? '<a class="icon-button home-button" data-home href="#lojas" aria-label="Voltar à vitrine" title="Início">' + icon('home') + '</a>' :
+    page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
     (current ? 'Minha conta' : 'Entrar') + '">' + icon('person') + '</button>' : '') +
     (clientReady ? '<a class="cart-button" href="#carrinho" aria-label="Carrinho">' + icon('bag') +
     '<span id="cart-count">0</span></a>' : '') + '</nav></div>';
@@ -31,7 +32,9 @@ function header() {
   if (customerMenu) customerMenu.onclick = () => app.openMenu();
   const menuButton = $('[data-merchant-menu]');
   if (menuButton) menuButton.onclick = () => app.openMenu();
-  const button = $('[data-account]');
+  const homeButton = $('[data-home]');
+  if (homeButton) homeButton.onclick = event => { event.preventDefault(); app.goHome(); };
+  const button = $('[data-account]',$('#top'));
   if (button) button.onclick = () => current ? account() : auth();
   if (clientReady) app.updateHeader();
 }
@@ -160,9 +163,45 @@ function account() {
   const canChangePassword = page === 'loja' && current.role === 'merchant' && current.operator_login;
   const name = page === 'cliente' && profile ? profile.name : page === 'admin' ? 'Administrador' :
     current.operator_login || current.email;
-  const el = modal('Minha conta','<p class="dialog-copy">' + esc(name) + '</p><div class="order-actions">' +
+  const customerPhoto = page === 'cliente' && profile;
+  const el = modal('Minha conta',(customerPhoto ? '<div class="account-profile"><div data-profile-preview>' +
+    profileAvatar(profile.photo,name,'cliente',true) + '</div><div><h3>' + esc(name) + '</h3><p class="muted">' +
+    esc(profile.phone) + '</p></div></div><form id="profile-photo-form" class="form-stack"><label>Foto de perfil<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required></label>' +
+    '<p class="muted">JPG, PNG ou WebP, até 3 MB. Sua foto aparece nos pedidos recebidos pelos estabelecimentos.</p>' +
+    '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">Salvar foto</button></form>' :
+    '<p class="dialog-copy">' + esc(name) + '</p>') + '<div class="order-actions">' +
     (canChangePassword ? '<button class="btn primary" data-change-password>Alterar senha</button>' : '') +
     '<button class="btn outline" data-logout>Sair</button></div>');
+  if (customerPhoto) {
+    const actor = current.id;
+    const form = $('#profile-photo-form',el);
+    let previewUrl;
+    el.addEventListener('close',() => { if (previewUrl) URL.revokeObjectURL(previewUrl); },{ once:true });
+    const validPhoto = file => {
+      if (!file?.size || !['image/jpeg','image/png','image/webp'].includes(file.type)) throw new Error('Escolha uma foto JPG, PNG ou WebP.');
+      if (file.size > 3 * 1024 * 1024) throw new Error('A foto deve ter até 3 MB.');
+    };
+    $('[name=photo]',form).onchange = event => {
+      const file = event.target.files[0];
+      const error = $('[data-form-error]',form);
+      error.textContent = '';
+      try {
+        validPhoto(file);
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = URL.createObjectURL(file);
+        $('[data-profile-preview]',el).innerHTML = '<span class="profile-avatar profile-avatar-large"><img src="' + esc(previewUrl) + '" alt="Prévia da foto de perfil"></span>';
+      } catch (err) { error.textContent = err.message; }
+    };
+    bindSubmit(form,async fields => {
+      const file = fields.get('photo');
+      validPhoto(file);
+      const updated = await api('upload-profile',file);
+      if (current?.id !== actor) return;
+      profile = updated;
+      if (form.isConnected && el.open) account();
+      toast('Foto de perfil salva.');
+    });
+  }
   if (canChangePassword) $('[data-change-password]',el).onclick = changePassword;
   $('[data-logout]',el).onclick = async () => {
     try {
@@ -195,7 +234,7 @@ function openActivation() {
   });
 }
 
-const context = { get user() { return current; }, signIn:auth };
+const context = { get user() { return current; }, signIn:auth, openAccount:account };
 app = page === 'cliente' ? null : page === 'loja' ? merchant(context) : operations(page,context);
 footer();
 renderApp();
@@ -221,3 +260,9 @@ main.addEventListener('click', event => {
   if (event.target.closest('[data-signin]')) auth();
   if (event.target.closest('[data-switch-account]') && current) account();
 });
+
+document.addEventListener('error',event => {
+  if (event.target.tagName !== 'IMG') return;
+  const avatar = event.target.closest('.profile-avatar');
+  if (avatar) avatar.textContent = avatar.dataset.initials || 'C';
+},true);

@@ -48,6 +48,7 @@ export function customer(context) {
       drawer.setAttribute('aria-labelledby','customer-menu-title');
       document.body.append(drawer);
       drawer.addEventListener('click',event => {
+        if (event.target.closest('[data-account]')) { closeMenu(); context.openAccount(); return; }
         if (event.target === drawer || event.target.closest('[data-close-menu]') || event.target.closest('a')) closeMenu();
       });
       drawer.addEventListener('close',() => $('[data-customer-menu]')?.setAttribute('aria-expanded','false'));
@@ -55,9 +56,20 @@ export function customer(context) {
     drawer.innerHTML = '<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="customer-menu-title">Cliente</h2></div>' +
       '<button class="icon-button" data-close-menu aria-label="Fechar menu">' + icon('close') + '</button></div>' +
       '<nav aria-label="Áreas do cliente">' + [['pedidos','Pedidos','bag'],['enderecos','Endereços','pin']].map(([key,label,symbol]) =>
-        '<a href="#' + key + '"' + (route() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) + label + '</a>').join('') + '</nav>';
+        '<a href="#' + key + '"' + (route() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) + label + '</a>').join('') + '<button type="button" data-account>' + icon('person') + ' Minha conta</button></nav>';
     drawer.showModal();
     $('[data-customer-menu]')?.setAttribute('aria-expanded','true');
+  }
+
+  function goHome() {
+    closeMenu();
+    category = 'Todas';
+    search = '';
+    if (route() !== 'lojas') location.hash = 'lojas';
+    else {
+      render();
+      $('.catalog')?.scrollIntoView({ behavior:'smooth' });
+    }
   }
 
   function updateHeader() {
@@ -461,5 +473,5 @@ export function customer(context) {
     window.removeEventListener('hashchange',refreshCatalog);
     window.removeEventListener('focus',refreshCatalog);
   }
-  return { render, stop, updateHeader, openMenu, closeMenu };
+  return { render, stop, updateHeader, openMenu, closeMenu, goHome };
 }

@@ -22,6 +22,7 @@ const icons = {
   pin:'<path d="M20 10c0 5-8 11-8 11s-8-6-8-11a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
   search:'<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>',
   bag:'<path d="M5 8h14l1 13H4L5 8Z"/><path d="M9 10V6a3 3 0 0 1 6 0v4"/>',
+  home:'<path d="m3 10 9-7 9 7v11h-6v-7H9v7H3V10Z"/>',
   person:'<circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/>',
   arrow:'<path d="M4 12h15m-6-6 6 6-6 6"/>',
   back:'<path d="M20 12H5m6-6-6 6 6 6"/>',
@@ -56,7 +57,7 @@ export async function api(path, data, retry = true) {
     method:'POST', headers:{ 'Content-Type':upload ? data.type : 'application/json', 'X-FD-App':location.pathname.split('/')[1] || 'cliente' },
     body:upload ? data : JSON.stringify(data)
   });
-  if (response.status === 401 && retry && (path === 'command' || path === 'provision' || path === 'change-password' || path.startsWith('upload?'))) {
+  if (response.status === 401 && retry && (path === 'command' || path === 'provision' || path === 'change-password' || path === 'upload-profile' || path.startsWith('upload?'))) {
     refresh ??= api('refresh', {}, false).finally(() => { refresh = null; });
     await refresh;
     return api(path, data, false);
@@ -110,6 +111,15 @@ export function empty(title, copy, symbol = 'bag') {
   return '<div class="empty"><div class="empty-icon">' + icon(symbol) + '</div><h3>' + esc(title) + '</h3><p>' + esc(copy) + '</p></div>';
 }
 
+export function profileAvatar(photo, name, scope = 'cliente', large = false) {
+  const valid = typeof photo === 'string' && /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp)$/.test(photo);
+  const parts = (String(name || '').trim() || 'Cliente').split(/\s+/);
+  const initials = (parts[0][0] + (parts.length > 1 ? parts.at(-1)[0] : '')).toUpperCase();
+  return '<span class="profile-avatar' + (large ? ' profile-avatar-large' : '') + '" aria-hidden="true" data-initials="' + esc(initials) + '">' +
+    (valid ? '<img src="/api/profile-photo?scope=' + (scope === 'loja' ? 'loja' : 'cliente') + '&amp;path=' +
+      encodeURIComponent(photo) + '" alt="" loading="lazy">' : esc(initials)) + '</span>';
+}
+
 export function orderCard(order, actions = '', options = {}) {
   const details = '<p>' + (order.items ?? []).map(item => item.quantity + '× ' + esc(item.name)).join(' · ') + '</p>' +
     (options.address ? '<p>' + icon('pin') + ' ' + esc(order.address) + '</p>' : '') +
@@ -135,8 +145,8 @@ export function orderCard(order, actions = '', options = {}) {
     const detailsId = (options.customerView ? 'customer-order-' : 'merchant-order-') + order.id;
     const expanded = Boolean(options.expanded);
     return '<article class="order-card compact-order order-stage-' + esc(order.status) + '"><div class="compact-order-head">' +
-      '<div><span class="overline">Pedido #' + esc(order.id.slice(0,8)) + '</span><h3>' +
-      esc(options.customerView ? order.store : order.customer_name || 'Cliente') + '</h3></div><div class="compact-order-controls"><span class="status status-' +
+      '<div class="compact-order-identity">' + (options.customerView ? '' : profileAvatar(order.customer_photo,order.customer_name,'loja')) + '<div><span class="overline">Pedido #' + esc(order.id.slice(0,8)) + '</span><h3>' +
+      esc(options.customerView ? order.store : order.customer_name || 'Cliente') + '</h3></div></div><div class="compact-order-controls"><span class="status status-' +
       esc(order.status) + '">' + esc(statuses[order.status]) + '</span>' +
       '<button class="btn outline" data-toggle-order="' + esc(order.id) + '" aria-controls="' + esc(detailsId) +
       '" aria-expanded="' + expanded + '" aria-label="' + (expanded ? 'Recolher' : 'Visualizar') + ' pedido #' +
