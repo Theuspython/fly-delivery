@@ -613,4 +613,5 @@ p { line-height:1.5 }
 .checkout-coupon label { flex:1 1 9rem; min-width:0; }
 .checkout-coupon input { width:100%; text-transform:uppercase; }
 .checkout-coupon-status:empty, .checkout-discounts:empty { display:none; }
+.checkout-coupon-status.coupon-accepted { color:#17613b; font-weight:700; }
 .checkout-discounts { display:grid; gap:.5rem; }

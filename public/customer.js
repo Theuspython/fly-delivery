@@ -11,7 +11,8 @@ function stored(key, fallback) {
 }
 const promotionBanner = rate => rate > 0 ?
   '<aside class="billing-notice"><strong>Dia promocional Fly Delivery</strong> · ' + percentage(rate) +
-  ' de desconto automático nos produtos, depois do cupom da loja.</aside>' : '';
+  ' de desconto em qualquer estabelecimento <span aria-hidden="true">😊</span></aside>' : '';
+const unavailableCoupon = error => /^(Cupom inválido ou fora do horário de validade|O cupom não se aplica aos produtos deste carrinho)\./.test(error.message);
 const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
 const storeCategories = store => sortCategories(store.categories ?? [store.category]);
 const storePhoto = store => store.image || imageFor(store,store.products.find(product => product.image));
@@ -516,6 +517,27 @@ export function customer(context) {
       discounts.innerHTML = '';
       total.textContent = '—';
       quoteStatus.textContent = message;
+      quoteStatus.classList.remove('coupon-accepted');
+    }
+
+    function showCouponNotice(sequence) {
+      const current = () => active && checkout.isConnected && route() === 'carrinho' && sequence === revision;
+      if (!current()) return;
+      const dialog = $('#dialog');
+      if (dialog.open) {
+        dialog.addEventListener('close', () => showCouponNotice(sequence), { once:true });
+        return;
+      }
+      quoteStatus.textContent = '';
+      modal('Cupom indisponível',
+        '<button class="btn primary wide" type="button" data-close autofocus>OK</button>',
+        'Este cupom não está mais disponível para este pedido. Você pode continuar com a sua compra sem ele.');
+      dialog.addEventListener('close', () => {
+        if (!current()) return;
+        couponCode = couponDraft = couponInput.value = '';
+        resetRequest();
+        refreshQuote();
+      }, { once:true });
     }
 
     async function refreshQuote() {
@@ -530,10 +552,13 @@ export function customer(context) {
         discounts.innerHTML = discountLine('Cupom ' + esc(result.coupon_code),result.coupon_discount_cents) +
           discountLine('Promoção Fly Delivery',result.platform_discount_cents);
         total.textContent = money(result.total);
-        quoteStatus.textContent = result.coupon_code ? 'Cupom aplicado.' : '';
+        quoteStatus.textContent = result.coupon_code ? 'Cupom liberado' : '';
+        quoteStatus.classList.toggle('coupon-accepted',Boolean(result.coupon_code));
         confirm.disabled = checkoutPending;
       } catch (error) {
-        if (checkout.isConnected && sequence === revision) quoteStatus.textContent = error.message;
+        if (!checkout.isConnected || sequence !== revision) return;
+        if (couponCode && unavailableCoupon(error)) showCouponNotice(sequence);
+        else quoteStatus.textContent = error.message;
       }
     }
 
@@ -573,7 +598,7 @@ export function customer(context) {
           resetRequest();
           await loadCatalog();
           render();
-          toast(err.message);
+          if (!unavailableCoupon(err)) toast(err.message);
           return;
         }
         throw err;
