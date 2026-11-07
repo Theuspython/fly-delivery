@@ -123,7 +123,12 @@ export function profileAvatar(photo, name, scope = 'cliente', large = false) {
       encodeURIComponent(photo) + '" alt="" width="48" height="48" decoding="async" loading="lazy">' : esc(initials)) + '</span>';
 }
 
+const orderPlacedAt = new Intl.DateTimeFormat('pt-BR',{
+  dateStyle:'short',timeStyle:'short',timeZone:'America/Sao_Paulo'
+});
+
 export function orderCard(order, actions = '', options = {}) {
+  const tendered = order.cash_tendered_cents;
   const details = '<ul class="order-item-list">' + (order.items ?? []).map(item => '<li><strong>' + item.quantity + '× ' + esc(item.name) + (item.size ? ' · Tamanho ' + esc(item.size) : '') + '</strong>' +
     ((item.options ?? []).length ? '<small>' + item.options.map(option => '+ ' + esc(option.name) + ' (' + money(option.price) + ')').join(' · ') + '</small>' : '') +
     ((item.meal_choices??[]).length?'<small class="meal-summary">'+item.meal_choices.map(group=>'<span><b>'+esc(group.name)+':</b> '+group.options.map(option=>esc(option.name)).join(', ')+'</span>').join('')+'<span>Montagem sem acréscimo</span></small>':'') +
@@ -132,7 +137,9 @@ export function orderCard(order, actions = '', options = {}) {
       (order.status==='cancelled' ? 'Endereço indisponível: pedido cancelado antes do aceite.' : 'O endereço será liberado após aceitar o pedido.') + '</p>' :
       order.address ? '<p>' + icon('pin') + ' ' + esc(order.address) + '</p>' : '') : '') +
     (order.note ? '<div class="order-note"><strong>Observação do cliente</strong><p>' + esc(order.note) + '</p></div>' : '') +
-    '<p>' + esc(payments[order.payment]) + '</p>';
+    '<p>' + esc(payments[order.payment]) + '</p>' +
+    (tendered == null ? '' : '<p><strong>Valor em dinheiro</strong> ' + money(tendered) +
+      ' · <strong>Troco</strong> ' + money(tendered - order.subtotal - order.fee) + '</p>');
   const customer = options.customer ? '<p class="order-customer"><strong>' + esc(order.customer_name || 'Cliente') + '</strong></p>' : '';
   const stages = ['placed','preparing','picked_up','delivered'];
   const stageLabels = ['Recebido','Em produção','Saiu para entrega','Entregue'];
@@ -156,8 +163,11 @@ export function orderCard(order, actions = '', options = {}) {
   if (options.compact) {
     const detailsId = (options.customerView ? 'customer-order-' : 'merchant-order-') + order.id;
     const expanded = Boolean(options.expanded);
+    const placed = order.created_at ? new Date(order.created_at) : null;
+    const placedTime = options.customerView && placed && Number.isFinite(placed.getTime()) ?
+      '<time class="order-placed-at" datetime="' + esc(order.created_at) + '">' + orderPlacedAt.format(placed) + '</time>' : '';
     return '<article data-order-id="' + esc(order.id) + '" class="order-card compact-order order-stage-' + esc(order.status) + '"><div class="compact-order-head">' +
-      '<div class="compact-order-identity">' + (options.customerView ? '' : profileAvatar(order.customer_photo,order.customer_name,'loja')) + '<div><span class="overline">Pedido #' + esc(order.id.slice(0,8)) + '</span><h3>' +
+      '<div class="compact-order-identity">' + (options.customerView ? '' : profileAvatar(order.customer_photo,order.customer_name,'loja')) + '<div>' + placedTime + '<span class="overline">Pedido #' + esc(order.id.slice(0,8)) + '</span><h3>' +
       esc(options.customerView ? order.store : order.customer_name || 'Cliente') + '</h3></div></div><div class="compact-order-controls"><span class="status status-' +
       esc(order.status) + '">' + esc(statuses[order.status]) + '</span>' +
       '<button class="btn outline" data-toggle-order="' + esc(order.id) + '" aria-controls="' + esc(detailsId) +

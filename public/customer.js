@@ -13,12 +13,19 @@ const promotionBanner = rate => rate > 0 ?
   '<aside class="billing-notice"><strong>Dia promocional Fly Delivery</strong> · ' + percentage(rate) +
   ' de desconto em qualquer estabelecimento <span aria-hidden="true">😊</span></aside>' : '';
 const unavailableCoupon = error => /^(Cupom inválido ou fora do horário de validade|O cupom não se aplica aos produtos deste carrinho)\./.test(error.message);
+function cashCents(value) {
+  const match = /^(\d{1,8})(?:[,.](\d{1,2}))?$/.exec(value.trim());
+  if (!match) return null;
+  const cents = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2,'0'));
+  return cents <= 2147483647 ? cents : null;
+}
 const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
 const storeCategories = store => sortCategories(store.categories ?? [store.category]);
 const storePhoto = store => store.image || imageFor(store,store.products.find(product => product.image));
 
 export function customer(context) {
   let stores = [];
+  const storeRanks = new Map();
   let loaded = false;
   let error;
   let loading;
@@ -44,6 +51,7 @@ export function customer(context) {
   let usePrimary = true;
   let active = true;
   let payment = 'pix_delivery';
+  let cashAmount = '';
   let requestId = stored(requestKey, null);
   let ordersTimer;
   let orderStream;
@@ -124,7 +132,8 @@ export function customer(context) {
   async function loadCatalog() {
     if (loading) return loading;
     loading = api('catalog').then(list => {
-      stores = list;
+      for (const store of list) if (!storeRanks.has(store.id)) storeRanks.set(store.id,Math.random());
+      stores = list.sort((a,b) => storeRanks.get(a.id) - storeRanks.get(b.id));
       for (const store of stores) for (const product of store.products) {
         if (optionDrafts.has(product.id)) optionDrafts.set(product.id,optionIds(product).filter(id=>(product.options ?? []).some(option=>option.id===id)));
       }
@@ -167,7 +176,7 @@ export function customer(context) {
 
   function saveCart() {
     resetRequest();
-    if (!cart.store) couponCode = couponDraft = '';
+    if (!cart.store) couponCode = couponDraft = cashAmount = '';
     localStorage.setItem(cartKey, JSON.stringify(cart));
     updateHeader();
   }
@@ -199,7 +208,7 @@ export function customer(context) {
     if (cart.store && cart.store !== store.id) {
       if (!window.confirm('Você tem itens de outra loja. Deseja começar um novo carrinho?')) return;
       cart = { store:store.id, items:{} };
-      couponCode = couponDraft = '';
+      couponCode = couponDraft = cashAmount = '';
       note = '';
       address = null;
       usePrimary = true;
@@ -264,9 +273,9 @@ export function customer(context) {
       '<section class="browse" aria-labelledby="categories-title"><div class="section-head"><div><span class="overline accent">BATEU AQUELA VONTADE?</span>' +
       '<h2 id="categories-title">O que vamos comer?</h2></div><label class="search-field">' + icon('search') +
       '<input id="search" type="search" maxlength="100" value="' + esc(search) + '" placeholder="Busque loja ou prato" aria-label="Busque loja ou prato"></label></div>' +
-      '<div id="categories" class="chips" aria-label="Filtrar categoria">' + categories.map(([label, symbol]) =>
+      '</section><div class="menu-category-bar showcase-category-bar"><div id="categories" class="chips" aria-label="Filtrar categoria">' + categories.map(([label, symbol]) =>
         '<button class="chip" data-category="' + esc(label) + '" aria-pressed="' + (label === category) + '">' + icon(symbol) + ' ' +
-        esc(label) + '</button>').join('') + '</div></section>' +
+        esc(label) + '</button>').join('') + '</div></div>' +
       '<section id="restaurants" class="catalog" aria-labelledby="catalog-title"><div class="section-head"><div><span class="overline accent">VITRINE FLY</span>' +
       '<h2 id="catalog-title">Estabelecimentos</h2></div><span class="muted" id="results-count"></span></div>' +
       promotionBanner(stores.find(store => store.promotion_bps > 0)?.promotion_bps) +
@@ -280,10 +289,12 @@ export function customer(context) {
     $('#categories').onclick = event => {
       const button = event.target.closest('[data-category]');
       if (!button) return;
+      const pastResults = $('#results').getBoundingClientRect().top < $('.showcase-category-bar').getBoundingClientRect().bottom;
       category = button.dataset.category;
       for (const chip of $('#categories').children) chip.setAttribute('aria-pressed', chip === button);
       catalogGrid();
       alignCategories();
+      if (pastResults) $('.catalog').scrollIntoView({ block:'start' });
     };
     catalogGrid();
     alignCategories(false);
@@ -464,6 +475,9 @@ export function customer(context) {
           '<section class="panel"><h2>Entrega e pagamento</h2>' + deliveryAddressMarkup() + '<form class="form-stack" id="checkout">' +
           '<label>Forma de pagamento<select name="payment">' + Object.entries(payments).map(([key,value]) =>
             '<option value="' + key + '"' + (key === payment ? ' selected' : '') + '>' + value + '</option>').join('') + '</select></label>' +
+          '<div class="cash-payment" data-cash-payment hidden><label>Troco para quanto?<input name="cash_amount" inputmode="decimal" autocomplete="off" maxlength="11" value="' +
+          esc(cashAmount) + '" placeholder="Ex.: 50,00" aria-describedby="cash-payment-help"></label>' +
+          '<small id="cash-payment-help" class="muted">Informe quanto vai entregar em dinheiro. Se for pagar o valor exato, digite o total do pedido.</small></div>' +
           '<label>Observação para o estabelecimento <span class="muted">(opcional)</span><textarea name="note" rows="3" maxlength="500" placeholder="Ex.: retirar a cebola">' + esc(note) + '</textarea></label>' +
           '<div class="checkout-coupon"><label>Cupom da loja<input name="coupon" maxlength="24" autocapitalize="characters" autocomplete="off" value="' +
           esc(couponDraft) + '" placeholder="Digite o código"></label><button type="button" class="btn outline" data-apply-coupon>Aplicar</button></div>' +
@@ -493,8 +507,20 @@ export function customer(context) {
     };
     if ($('[data-retry-address]')) $('[data-retry-address]').onclick = async () => { await loadPrimaryAddress(); render(); };
     $('[name=note]').oninput = event => { note = event.target.value; resetRequest(); };
-    $('select[name=payment]').onchange = event => {
+    const cashPayment = $('[data-cash-payment]');
+    const cashInput = $('[name=cash_amount]',cashPayment);
+    const paymentInput = $('select[name=payment]');
+    function updateCashField() {
+      const payingCash = payment === 'cash_delivery';
+      cashPayment.hidden = cashInput.disabled = !payingCash;
+      cashInput.required = payingCash;
+    }
+    updateCashField();
+    cashInput.oninput = () => { cashAmount = cashInput.value; resetRequest(); };
+    paymentInput.onchange = event => {
       payment = event.target.value;
+      resetRequest();
+      updateCashField();
     };
     const checkout = $('#checkout');
     const couponInput = $('[name=coupon]',checkout);
@@ -568,6 +594,12 @@ export function customer(context) {
 
     couponInput.oninput = () => {
       couponDraft = couponInput.value;
+      if (!couponDraft.trim()) {
+        if (couponCode) resetRequest();
+        couponCode = '';
+        refreshQuote();
+        return;
+      }
       invalidateQuote('Clique em Aplicar para atualizar o total.');
     };
     apply.onclick = () => {
@@ -583,15 +615,22 @@ export function customer(context) {
     };
     bindSubmit(checkout, async fields => {
       if (!quote || checkoutPending) return;
+      const method = fields.get('payment');
+      const tendered = method === 'cash_delivery' ? cashCents(fields.get('cash_amount') ?? '') : null;
+      if (method === 'cash_delivery' && (tendered === null || tendered < quote.total)) {
+        cashInput.focus();
+        throw new Error('Informe um valor em dinheiro igual ou maior que o total de ' + money(quote.total) + '.');
+      }
       const chosen = deliveryAddress();
       if (!chosen) return addressDialog();
       if (!context.user) return context.signIn();
       requestId ??= crypto.randomUUID();
       localStorage.setItem(requestKey,JSON.stringify(requestId));
       checkoutPending = couponInput.disabled = apply.disabled = true;
+      paymentInput.disabled = cashInput.readOnly = true;
       try {
         await command('place',{ ...pricingInput,coupon_code:couponCode,quote,request_id:requestId,
-          address:chosen.text,payment:fields.get('payment'),note:fields.get('note') });
+          address:chosen.text,payment:method,cash_tendered_cents:tendered,note:fields.get('note') });
       } catch (err) {
         if (/mudaram|cupom|cardápio|opcionais|escolhas/i.test(err.message)) {
           invalidateQuote('');
@@ -604,6 +643,7 @@ export function customer(context) {
         throw err;
       } finally {
         checkoutPending = couponInput.disabled = apply.disabled = false;
+        paymentInput.disabled = cashInput.readOnly = false;
       }
       cart = { store:null,items:{} };
       note = '';
@@ -709,8 +749,10 @@ export function customer(context) {
       },gap*(cards.length-1));
       if (height>0) list.style.setProperty('--history-height',Math.ceil(height)+'px');
     }
+    const resizeHistory = () => list.classList.toggle('history-unclamped',Boolean(openOrderId) || (pages <= 1 && orders.length <= 4));
     function draw() {
       if (openOrderId && !orders.some(order=>order.id===openOrderId)) openOrderId=null;
+      resizeHistory();
       const markup = orders.map(order=>orderCard(order,'',{address:true,timeline:true,progress:true,compact:true,customerView:true,expanded:order.id===openOrderId})).join('');
       renderLiveMarkup(grid,markup);
       $('.history-count').textContent = orders.length ? orders.length+' de '+count+' pedidos' : '';
@@ -755,7 +797,7 @@ export function customer(context) {
       const button=event.target.closest('[data-toggle-order]');
       if (!button) return;
       openOrderId=openOrderId===button.dataset.toggleOrder?null:button.dataset.toggleOrder;
-      // Keep the scroll position and focused button while updating the accordion.
+      resizeHistory();
       for (const toggle of grid.querySelectorAll('[data-toggle-order]')) {
         const expanded=toggle.dataset.toggleOrder===openOrderId;
         toggle.setAttribute('aria-expanded',String(expanded));
@@ -763,6 +805,7 @@ export function customer(context) {
         toggle.setAttribute('aria-label',(expanded?'Recolher':'Visualizar')+' pedido #'+toggle.dataset.toggleOrder.slice(0,8));
         document.getElementById(toggle.getAttribute('aria-controls')).hidden=!expanded;
       }
+      button.closest('.order-card').scrollIntoView({ block:openOrderId ? 'start' : 'nearest' });
     });
     window.addEventListener('resize',measure);
     document.fonts?.ready.then(measure);
