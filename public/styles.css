@@ -599,3 +599,18 @@ p { line-height:1.5 }
 @media(max-width:650px) { .invoice-grid { grid-template-columns:1fr; } .open-invoice .invoice-heading { flex-wrap:wrap; } }
 
 .management-card .management-trusted { border-left:3px solid #a86c0c; padding-left:9px; color:#785108; font-size:.83rem; }
+
+.promotion-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; padding:1rem 0; border-top:1px solid var(--line); }
+.promotion-row p, .promotion-row .order-actions { margin:0; }
+.promotion-row .order-actions { padding:0; }
+.coupon-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; }
+.coupon-fields input { min-width:0; width:100%; }
+.coupon-products { min-width:0; max-height:12rem; overflow:auto; display:grid; gap:.6rem; }
+.coupon-products[hidden] { display:none; }
+.form-stack .coupon-products label, .form-stack .coupon-checkbox { display:flex; align-items:center; gap:.55rem; }
+.form-stack .coupon-products input, .form-stack .coupon-checkbox input { width:auto; min-height:0; }
+.checkout-coupon { display:flex; align-items:end; flex-wrap:wrap; gap:.5rem; }
+.checkout-coupon label { flex:1 1 9rem; min-width:0; }
+.checkout-coupon input { width:100%; text-transform:uppercase; }
+.checkout-coupon-status:empty, .checkout-discounts:empty { display:none; }
+.checkout-discounts { display:grid; gap:.5rem; }

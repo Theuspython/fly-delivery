@@ -1,5 +1,6 @@
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, sortCategories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
+import { percentage } from './invoices.js';
 import { searchCatalog } from './catalog-search.js';
 import { mealGroups,resolveMealSelection,mealChoicesMarkup } from './meal-choices.js';
 import { renderLiveMarkup } from './live-markup.js';
@@ -8,6 +9,9 @@ function stored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
   catch { return fallback; }
 }
+const promotionBanner = rate => rate > 0 ?
+  '<aside class="billing-notice"><strong>Dia promocional Fly Delivery</strong> · ' + percentage(rate) +
+  ' de desconto automático nos produtos, depois do cupom da loja.</aside>' : '';
 const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
 const storeCategories = store => sortCategories(store.categories ?? [store.category]);
 const storePhoto = store => store.image || imageFor(store,store.products.find(product => product.image));
@@ -25,6 +29,9 @@ export function customer(context) {
   const sizeDrafts = new Map();
   const mealDrafts = new Map();
   let note = '';
+  let couponCode = '';
+  let couponDraft = '';
+  let checkoutPending = false;
   const cartKey = 'fd-cart:' + context.user.id;
   const requestKey = 'fd-request:' + context.user.id;
   let cart = stored(cartKey, { store:null, items:{} });
@@ -159,6 +166,7 @@ export function customer(context) {
 
   function saveCart() {
     resetRequest();
+    if (!cart.store) couponCode = couponDraft = '';
     localStorage.setItem(cartKey, JSON.stringify(cart));
     updateHeader();
   }
@@ -182,6 +190,7 @@ export function customer(context) {
     return {key,product,options,mealSelections:meals.selections,mealGroups:meals.groups,size: size?.name ?? '',basePrice,quantity:cart.items[key],price:basePrice+options.reduce((sum,option)=>sum+option.price,0)};
   }
   function setItem(store, product, increment, ids = optionIds(product), size = productSize(product)?.name ?? '', selection = mealSelection(product,size)) {
+    if (checkoutPending) return;
     const meals=resolveMealSelection(product,size,selection);
     if(!meals.valid){toast(meals.reason);return;}
     const key = lineKey(product,ids,size,meals.selections);
@@ -189,6 +198,7 @@ export function customer(context) {
     if (cart.store && cart.store !== store.id) {
       if (!window.confirm('Você tem itens de outra loja. Deseja começar um novo carrinho?')) return;
       cart = { store:store.id, items:{} };
+      couponCode = couponDraft = '';
       note = '';
       address = null;
       usePrimary = true;
@@ -258,6 +268,7 @@ export function customer(context) {
         esc(label) + '</button>').join('') + '</div></section>' +
       '<section id="restaurants" class="catalog" aria-labelledby="catalog-title"><div class="section-head"><div><span class="overline accent">VITRINE FLY</span>' +
       '<h2 id="catalog-title">Estabelecimentos</h2></div><span class="muted" id="results-count"></span></div>' +
+      promotionBanner(stores.find(store => store.promotion_bps > 0)?.promotion_bps) +
       '<div id="results"></div></section></div>';
     $('.hero-cta').onclick = event => {
       if (route() !== 'lojas') return;
@@ -287,6 +298,7 @@ export function customer(context) {
       '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta + ' min</span><span>' + icon('bike') + ' ' +
       (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></section>' +
       (!store.is_open ? '<p class="pilot-label">Esta loja está fechada.</p>' : '') +
+      promotionBanner(store.promotion_bps) +
       '<div class="section-head menu-head"><h2>Cardápio</h2><a class="btn outline" href="#carrinho">' + icon('bag') + ' Ver carrinho</a></div>' +
       '<div class="menu-category-bar"><div id="menu-categories" class="chips" aria-label="Filtrar produtos por categoria">' + menuChoices(store).map(([label,symbol]) =>
         '<button class="chip" data-menu-category="' + esc(label) + '" aria-pressed="' + (label===menuCategory) + '">' +
@@ -452,12 +464,15 @@ export function customer(context) {
           '<label>Forma de pagamento<select name="payment">' + Object.entries(payments).map(([key,value]) =>
             '<option value="' + key + '"' + (key === payment ? ' selected' : '') + '>' + value + '</option>').join('') + '</select></label>' +
           '<label>Observação para o estabelecimento <span class="muted">(opcional)</span><textarea name="note" rows="3" maxlength="500" placeholder="Ex.: retirar a cebola">' + esc(note) + '</textarea></label>' +
+          '<div class="checkout-coupon"><label>Cupom da loja<input name="coupon" maxlength="24" autocapitalize="characters" autocomplete="off" value="' +
+          esc(couponDraft) + '" placeholder="Digite o código"></label><button type="button" class="btn outline" data-apply-coupon>Aplicar</button></div>' +
+          '<p class="muted checkout-coupon-status" data-quote-status aria-live="polite"></p>' +
           '<p class="muted">O pagamento é combinado com a loja e realizado na entrega.</p>' +
           '<div class="total-line"><span>Produtos</span><strong>' + money(subtotal) + '</strong></div>' +
-          '<div class="total-line"><span>Entrega</span><strong>' + money(store.fee) + '</strong></div>' +
-          '<div class="total-line total"><span>Total</span><strong>' + money(subtotal + store.fee) + '</strong></div>' +
+          '<div class="checkout-discounts" data-discounts></div><div class="total-line"><span>Entrega</span><strong>' + money(store.fee) + '</strong></div>' +
+          '<div class="total-line total"><span>Total</span><strong data-checkout-total>—</strong></div>' +
           '<p class="form-error" data-form-error role="alert"></p>' +
-          '<button class="btn primary wide" type="submit"' + (!store.is_open ? ' disabled' : '') + '>' +
+          '<button class="btn primary wide" type="submit" disabled>' +
           (store.is_open ? 'Confirmar pedido' : 'Loja fechada') + '</button></form></section></div>') + '</div>';
     if ($('[data-clear]')) $('[data-clear]').onclick = () => { cart = { store:null,items:{} }; note = ''; saveCart(); render(); };
     if (!products.length) return;
@@ -480,25 +495,90 @@ export function customer(context) {
     $('select[name=payment]').onchange = event => {
       payment = event.target.value;
     };
-    bindSubmit($('#checkout'), async fields => {
+    const checkout = $('#checkout');
+    const couponInput = $('[name=coupon]',checkout);
+    const apply = $('[data-apply-coupon]',checkout);
+    const confirm = $('[type=submit]',checkout);
+    const quoteStatus = $('[data-quote-status]',checkout);
+    const discounts = $('[data-discounts]',checkout);
+    const total = $('[data-checkout-total]',checkout);
+    const pricingInput = { store_id:store.id,fee:store.fee,items:products.map(line => ({
+      id:line.product.id,quantity:line.quantity,price:line.basePrice,size:line.size || null,
+      options:line.options.map(option => ({ id:option.id,price:option.price })),meal_choices:line.mealSelections
+    })) };
+    let quote;
+    let revision = 0;
+
+    function invalidateQuote(message) {
+      revision++;
+      quote = null;
+      confirm.disabled = true;
+      discounts.innerHTML = '';
+      total.textContent = '—';
+      quoteStatus.textContent = message;
+    }
+
+    async function refreshQuote() {
+      invalidateQuote('Calculando total…');
+      if (couponDraft.trim().toUpperCase() !== couponCode) { quoteStatus.textContent = 'Clique em Aplicar para atualizar o total.'; return; }
+      if (!store.is_open) { quoteStatus.textContent = ''; return; }
+      const sequence = revision;
+      try {
+        const result = await command('quote_order',{ ...pricingInput,coupon_code:couponCode });
+        if (!checkout.isConnected || sequence !== revision) return;
+        quote = result;
+        discounts.innerHTML = discountLine('Cupom ' + esc(result.coupon_code),result.coupon_discount_cents) +
+          discountLine('Promoção Fly Delivery',result.platform_discount_cents);
+        total.textContent = money(result.total);
+        quoteStatus.textContent = result.coupon_code ? 'Cupom aplicado.' : '';
+        confirm.disabled = checkoutPending;
+      } catch (error) {
+        if (checkout.isConnected && sequence === revision) quoteStatus.textContent = error.message;
+      }
+    }
+
+    function discountLine(label, value) {
+      return value > 0 ? '<div class="total-line"><span>' + label + '</span><strong>− ' + money(value) + '</strong></div>' : '';
+    }
+
+    couponInput.oninput = () => {
+      couponDraft = couponInput.value;
+      invalidateQuote('Clique em Aplicar para atualizar o total.');
+    };
+    apply.onclick = () => {
+      if (checkoutPending) return;
+      const nextCode = couponInput.value.trim().toUpperCase();
+      if (nextCode !== couponCode) resetRequest();
+      couponCode = couponDraft = couponInput.value = nextCode;
+      $('[data-form-error]',checkout).textContent = '';
+      refreshQuote();
+    };
+    couponInput.onkeydown = event => {
+      if (event.key === 'Enter') { event.preventDefault(); apply.click(); }
+    };
+    bindSubmit(checkout, async fields => {
+      if (!quote || checkoutPending) return;
       const chosen = deliveryAddress();
       if (!chosen) return addressDialog();
       if (!context.user) return context.signIn();
       requestId ??= crypto.randomUUID();
       localStorage.setItem(requestKey,JSON.stringify(requestId));
+      checkoutPending = couponInput.disabled = apply.disabled = true;
       try {
-        await command('place', { store_id:store.id, request_id:requestId, address:chosen.text,
-          payment:fields.get('payment'), note:fields.get('note'), fee:store.fee, items:products.map(line => ({
-            id:line.product.id, quantity:line.quantity, price:line.basePrice, size:line.size || null, options:line.options.map(option=>({id:option.id,price:option.price})),meal_choices:line.mealSelections
-          })) });
+        await command('place',{ ...pricingInput,coupon_code:couponCode,quote,request_id:requestId,
+          address:chosen.text,payment:fields.get('payment'),note:fields.get('note') });
       } catch (err) {
-        if (err.message.includes('mudaram') || err.message.includes('cardápio') || err.message.includes('opcionais') || err.message.includes('escolhas')) {
+        if (/mudaram|cupom|cardápio|opcionais|escolhas/i.test(err.message)) {
+          invalidateQuote('');
+          resetRequest();
           await loadCatalog();
           render();
           toast(err.message);
           return;
         }
         throw err;
+      } finally {
+        checkoutPending = couponInput.disabled = apply.disabled = false;
       }
       cart = { store:null,items:{} };
       note = '';
@@ -508,6 +588,7 @@ export function customer(context) {
       location.hash = 'pedidos';
       toast('Pedido enviado à loja.');
     });
+    refreshQuote();
   }
 
   function orderView() {
@@ -702,11 +783,11 @@ export function customer(context) {
   });
   async function refreshCatalog() {
     const view = route();
-    if (!active || ['pedidos','historico','enderecos'].includes(view) || $('#dialog').open) return;
+    if (!active || checkoutPending || ['pedidos','historico','enderecos'].includes(view) || $('#dialog').open) return;
     const before = JSON.stringify(stores);
     const hadError = Boolean(error);
     await loadCatalog();
-    if (route() === view && !$('#dialog').open && (before !== JSON.stringify(stores) || hadError !== Boolean(error))) render();
+    if (!checkoutPending && route() === view && !$('#dialog').open && (before !== JSON.stringify(stores) || hadError !== Boolean(error))) render();
   }
   window.addEventListener('hashchange',refreshCatalog);
   window.addEventListener('focus',refreshCatalog);

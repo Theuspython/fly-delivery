@@ -27,6 +27,8 @@ const icons = {
   person:'<circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/>',
   arrow:'<path d="M4 12h15m-6-6 6 6-6 6"/>',
   back:'<path d="M20 12H5m6-6-6 6 6 6"/>',
+  calendar:'<rect x="4" y="6" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v5m8-5v5"/>',
+  tag:'<path d="M20 13 13 20 4 11V4h7l9 9Z"/><circle cx="8" cy="8" r="1"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   bike:'<circle cx="5" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="m5 17 5-8 4 8h5l-4-11h3M9 9H6"/>',
   grid:'<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
@@ -146,7 +148,10 @@ export function orderCard(order, actions = '', options = {}) {
       new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(new Date(event.created_at)) + '</time></li>').join('') + '</ol>'
     : '';
   const body = progress + '<div class="order-body">' + details +
-    '<dl class="order-totals"><div><dt>Produtos</dt><dd>' + money(order.subtotal) + '</dd></div><div><dt>Entrega</dt><dd>' + money(order.fee) +
+    '<dl class="order-totals"><div><dt>Produtos</dt><dd>' + money(order.gross_subtotal ?? order.subtotal) + '</dd></div>' +
+    (order.coupon_discount_cents > 0 ? '<div><dt>Cupom ' + esc(order.coupon_code) + '</dt><dd>− ' + money(order.coupon_discount_cents) + '</dd></div>' : '') +
+    (order.platform_discount_cents > 0 ? '<div><dt>Promoção Fly Delivery</dt><dd>− ' + money(order.platform_discount_cents) + '</dd></div>' : '') +
+    '<div><dt>Entrega</dt><dd>' + money(order.fee) +
     '</dd></div><div class="order-grand-total"><dt>Total</dt><dd>' + money(order.subtotal + order.fee) + '</dd></div></dl></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '');
   if (options.compact) {
     const detailsId = (options.customerView ? 'customer-order-' : 'merchant-order-') + order.id;

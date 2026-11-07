@@ -97,3 +97,11 @@ Além de `npm test`, os roteiros `test/daily_billing.sql`, `test/sizes_order_not
 O administrador pode usar **Liberar por confiança**, confirmar as faturas vencidas e devolver a loja à vitrine sem apagar a dívida nem marcar pagamento. A liberação registra o administrador e a data em cada fatura já vencida; uma fatura que vencer depois não é coberta pela liberação anterior. A loja continua vendo a pendência e pode pagar normalmente. Não é necessário um novo pedido ou um agendador ativo para o bloqueio: a disponibilidade também verifica as dívidas vencidas nas consultas e no fechamento do pedido. A vitrine aberta é atualizada a cada 10 segundos.
 
 `test/overdue_trust.sql` verifica o intervalo de 00h até a virada seguinte, o bloqueio exato às 12h em Brasília, liberação de confiança, dívida preservada, novos vencimentos e desbloqueio pelo pagamento. Todas as suas contas, faturas e pagamentos são apenas fixtures dentro de uma transação com rollback.
+
+## Promoções e cupons
+
+Em **Administração → Dias promocionais**, selecione uma data e ative a promoção. Durante aquele dia civil de Brasília, a taxa global vigente vira desconto automático nos produtos dos pedidos feitos na data. A taxa aplicada fica registrada no pedido. A entrega pode acontecer em outra data, sem gerar comissão para esse pedido.
+
+Em **Estabelecimento → Cupons de desconto**, configure código, porcentagem, data, horários e produtos elegíveis. Um cupom pode ser editado, pausado ou reativado. No carrinho, o cliente aplica um código por pedido. O cupom reduz primeiro os produtos elegíveis e o desconto da plataforma incide sobre o subtotal restante. A entrega fica fora dos dois descontos. O servidor calcula em centavos e exige nova confirmação se os valores mudarem.
+
+O histórico de status fica em `fly_delivery.orders.status_history`, com datas de aceite, saída e cancelamento em colunas próprias. A migração preserva os registros anteriores e retira `fly_delivery.order_events`. O teste `test/order_promotions.sql` verifica os descontos, a comissão, o histórico e as permissões com rollback.

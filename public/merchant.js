@@ -1,6 +1,7 @@
 import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast, sortCategories } from './shared.js';
 import { invoicesMarkup, suspensionBanner } from './invoices.js';
 import { productForm, storeSettings, storeMarkup } from './operations.js';
+import { couponsMarkup, couponForm } from './promotions.js';
 import { renderLiveMarkup } from './live-markup.js';
 
 const sections = [
@@ -8,6 +9,7 @@ const sections = [
   ['pedidos','Pedidos em andamento','bag'],
   ['produtos','Cadastro de produtos','burger'],
   ['financeiro','Financeiro','grid'],
+  ['cupons','Cupons de desconto','tag'],
   ['perfil','Perfil da loja','store']
 ];
 const labels = Object.fromEntries(sections.map(([key,label]) => [key,label]));
@@ -43,7 +45,7 @@ function pagination(data) {
 function financeMarkup(data) {
   const summary = '<div class="finance-summary">' + [
     ['Pedidos entregues',String(data.count)],
-    ['Vendas em produtos',money(data.products)],
+    ['Produtos após descontos',money(data.products)],
     ['Taxas de entrega',money(data.delivery)],
     ['Total dos pedidos',money(data.total)],
     ['Comissão Fly Delivery',money(data.platform)],
@@ -69,6 +71,7 @@ export function merchant(context) {
   let sequence = 0;
   let busy = false;
   let stores = [];
+  let coupons = [];
   let openOrderId = null;
   let queueFilter = 'placed';
   let activeOrders = [];
@@ -158,6 +161,12 @@ export function merchant(context) {
       } else if (currentSection === 'financeiro') {
         const data = await command('merchant_finance',{ date_from:fromDate,date_to:toDate,page });
         markup = financeMarkup(data);
+      } else if (currentSection === 'cupons') {
+        const [managed, saved] = await Promise.all([command('managed_stores'),command('merchant_coupons')]);
+        if (revision !== sequence || context.user !== user || currentSection !== section()) return;
+        stores = managed;
+        coupons = saved;
+        markup = couponsMarkup(stores,coupons);
       } else {
         stores = await command('managed_stores');
         markup = stores.length ? '<div class="management-grid">' + stores.map(store =>
@@ -190,6 +199,7 @@ export function merchant(context) {
       page = 0;
       previousSection = null;
       stores = [];
+      coupons = [];
       openOrderId = null;
       queueFilter = 'placed';
       activeOrders = [];
@@ -279,6 +289,20 @@ export function merchant(context) {
     else result.onclick = async event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
+      if (button.dataset.newCoupon || button.dataset.editCoupon || button.dataset.toggleCoupon) {
+        const coupon = coupons.find(item => item.id === (button.dataset.editCoupon || button.dataset.toggleCoupon));
+        const shop = stores.find(item => item.id === (button.dataset.newCoupon || coupon?.store_id));
+        if (!shop) return;
+        if (!button.dataset.toggleCoupon) return couponForm(shop,coupon,() => refresh(true));
+        button.disabled = true;
+        try {
+          await command('merchant_toggle_coupon',{ id:coupon.id,store_id:shop.id,enabled:!coupon.enabled });
+          await refresh(true);
+          toast(coupon.enabled ? 'Cupom pausado.' : 'Cupom ativado.');
+        } catch (error) { toast(error.message); }
+        finally { button.disabled = false; }
+        return;
+      }
       if (button.dataset.payInvoice) {
         const tab = window.open('about:blank','_blank');
         if (tab) tab.opener = null;
