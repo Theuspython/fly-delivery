@@ -27,6 +27,7 @@ function header() {
     (page === 'admin' ? '<button class="icon-button merchant-menu-button" data-admin-menu aria-label="Abrir menu da administração" aria-controls="admin-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
     (clientReady ? '<a class="icon-button home-button" data-home href="#lojas" aria-label="Voltar à vitrine" title="Início">' + icon('home') + '</a>' :
+    page === 'loja' && current?.role === 'merchant' ? '<a class="icon-button home-button" data-merchant-home href="#pedidos" aria-label="Voltar aos pedidos em andamento" title="Pedidos em andamento">' + icon('home') + '</a>' :
     page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
     (current ? 'Minha conta' : 'Entrar') + '">' + icon('person') + '</button>' : '') +
     (clientReady ? '<a class="cart-button" href="#carrinho" aria-label="Carrinho">' + icon('bag') +
@@ -41,6 +42,8 @@ function header() {
   if (adminMenu) adminMenu.onclick = () => app.openMenu();
   const homeButton = $('[data-home]');
   if (homeButton) homeButton.onclick = event => { event.preventDefault(); app.goHome(); };
+  const merchantHome = $('[data-merchant-home]');
+  if (merchantHome) merchantHome.onclick = () => window.scrollTo(0,0);
   const button = $('[data-account]',$('#top'));
   if (button) button.onclick = () => current ? account() : auth();
   if (clientReady) app.updateHeader();

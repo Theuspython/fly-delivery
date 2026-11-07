@@ -86,7 +86,7 @@ export function modal(title, body, description = '') {
   return dialog;
 }
 dialog.addEventListener('click', event => {
-  if (event.target.closest('[data-close]') || event.target === dialog) dialog.close();
+  if (event.target.closest('[data-close]') || (event.target === dialog && !$('#store-form',dialog))) dialog.close();
 });
 
 export function bindSubmit(form, fn) {

@@ -45,6 +45,12 @@ export function customer(context) {
   let openOrderId = null;
   let stopHistory;
   const route = () => location.hash.slice(1) || 'inicio';
+  const header = $('#top');
+  function measureHeader() {
+    main.style.setProperty('--customer-header-height', (header?.offsetHeight ?? 0) + 'px');
+  }
+  const headerObserver = header && typeof ResizeObserver === 'function' ? new ResizeObserver(measureHeader) : null;
+  headerObserver?.observe(header);
 
   function closeMenu() {
     if (drawer?.open) drawer.close();
@@ -83,6 +89,7 @@ export function customer(context) {
   }
 
   function updateHeader() {
+    measureHeader();
     $('#cart-count').textContent = Object.values(cart.items).reduce((sum, amount) => sum + amount, 0);
     updateFloatingCart();
   }
@@ -147,7 +154,7 @@ export function customer(context) {
     list.scrollTo({ left:selected === list.querySelector('.chip') ? 0 : Math.max(0,left),
       behavior:smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'instant' });
   }
-  const resizeCategories = () => { alignCategories(false); alignCategories(false,$('#menu-categories')); };
+  const resizeCategories = () => { measureHeader(); alignCategories(false); alignCategories(false,$('#menu-categories')); };
   window.addEventListener('resize',resizeCategories);
 
   function saveCart() {
@@ -281,17 +288,19 @@ export function customer(context) {
       (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></section>' +
       (!store.is_open ? '<p class="pilot-label">Esta loja está fechada.</p>' : '') +
       '<div class="section-head menu-head"><h2>Cardápio</h2><a class="btn outline" href="#carrinho">' + icon('bag') + ' Ver carrinho</a></div>' +
-      '<div id="menu-categories" class="chips" aria-label="Filtrar produtos por categoria">' + menuChoices(store).map(([label,symbol]) =>
+      '<div class="menu-category-bar"><div id="menu-categories" class="chips" aria-label="Filtrar produtos por categoria">' + menuChoices(store).map(([label,symbol]) =>
         '<button class="chip" data-menu-category="' + esc(label) + '" aria-pressed="' + (label===menuCategory) + '">' +
-        icon(symbol) + ' ' + esc(label==='uncategorized' ? 'Itens sem categoria' : label) + '</button>').join('') + '</div>' +
+        icon(symbol) + ' ' + esc(label==='uncategorized' ? 'Itens sem categoria' : label) + '</button>').join('') + '</div></div>' +
       '<p id="menu-count" class="muted menu-count" aria-live="polite"></p><div class="products" id="menu-products"></div></div>';
     $('#menu-categories').onclick = event => {
       const button = event.target.closest('[data-menu-category]');
       if (!button) return;
+      const pastFirstProducts = $('#menu-products').getBoundingClientRect().top < $('.menu-category-bar').getBoundingClientRect().bottom;
       menuCategory = button.dataset.menuCategory;
       for (const chip of $('#menu-categories').children) chip.setAttribute('aria-pressed',String(chip===button));
       menuGrid(store);
       alignCategories(true,$('#menu-categories'));
+      if (pastFirstProducts) $('.menu-head').scrollIntoView?.({ block:'start' });
     };
     $('#menu-products').onclick = event => {
       const clear=event.target.closest('[data-clear-meal]');
@@ -704,6 +713,8 @@ export function customer(context) {
   const catalogTimer = setInterval(() => { if (!document.hidden) refreshCatalog(); },10000);
   function stop() {
     active = false;
+    headerObserver?.disconnect();
+    main.style.removeProperty('--customer-header-height');
     floatingCart?.remove();floatingCart=null;
     document.body.classList.remove('has-floating-cart');
     stopHistory?.(); stopHistory=null;

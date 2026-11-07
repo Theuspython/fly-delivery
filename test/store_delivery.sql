@@ -31,7 +31,7 @@ begin
   update auth.users set raw_app_meta_data=jsonb_build_object('fly_delivery_operator',
     jsonb_build_object('role','courier','login',id::text)) where id=courier1;
   registration := jsonb_build_object('user_id',merchant_id,'role','merchant','login','fixture-shop',
-    'request_id',registration_id,'name','Fixture Store','categories',array['Pizza','Brasileira']);
+    'request_id',registration_id,'name','Fixture Store','categories',array['Pizza','Porções']);
   result := public.fd_api('assign_operator',registration);
   store_id := (result->>'id')::uuid;
   if public.fd_api('assign_operator',registration)->>'id' <> store_id::text then raise exception 'Duplicate registration retry'; end if;
@@ -53,9 +53,10 @@ begin
 
   perform set_config('request.jwt.claim.sub',merchant_id::text,true);
   photo := 'https://fixture.supabase.co/storage/v1/object/public/fly-delivery-menu/' || store_id || '/' || gen_random_uuid() || '.webp';
-  perform public.fd_api('save_store_profile',jsonb_build_object('id',store_id,'active',true,'address','Rua Teste 123',
+  perform public.fd_api('save_store_profile',jsonb_build_object('id',store_id,'active',true,
     'fee',650,'eta',25,'weekly_hours',schedule,'image',photo));
   select * into shop from fly_delivery.stores where id=store_id;
+  if shop.address is not null or not shop.is_open then raise exception 'First publication without address failed'; end if;
   shop.weekly_hours := '[null,{"open":"20:00","close":"02:00"},null,null,null,null,null]';
   if shop.lat is not null or shop.lng is not null then raise exception 'Store needs coordinates'; end if;
   if not fly_delivery.store_open_at(shop,'2026-11-10 01:00-03'::timestamptz)
@@ -63,9 +64,13 @@ begin
     raise exception 'Overnight hours incorrect';
   end if;
   if not exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) item
-    where item->>'id'=store_id::text and item->>'image'=photo and item->'categories' @> '["Pizza","Brasileira"]'::jsonb) then
+    where item->>'id'=store_id::text and item->>'image'=photo and item->'is_open'='true' and item->'categories' @> '["Pizza","Porções"]'::jsonb) then
     raise exception 'Store cover or categories not visible';
   end if;
+  perform public.fd_api('set_open',jsonb_build_object('store_id',store_id,'open',false));
+  perform public.fd_api('save_store_profile',jsonb_build_object('id',store_id,'active',true,'fee',650,'eta',25,'weekly_hours',schedule,'image',photo));
+  if (select is_open from fly_delivery.stores where id=store_id) then raise exception 'Editing the profile resumed paused orders'; end if;
+  perform public.fd_api('set_open',jsonb_build_object('store_id',store_id,'open',true));
   result := public.fd_api('save_product',jsonb_build_object('store_id',store_id,'name','Pizza Teste','category','Pizza','price',1990,'active',true));
   product_id := (result->>'id')::uuid;
   if not fly_delivery.can_upload(store_id::text || '/' || gen_random_uuid() || '.webp') then raise exception 'Merchant cannot upload'; end if;
@@ -156,6 +161,13 @@ begin
   end if;
   if result->>'status' <> 'delivered' or result->'items'->0->>'name' <> 'Pizza Teste' or
     jsonb_array_length(result->'events') <> 4 then raise exception 'Delivery history was not preserved'; end if;
+  perform public.fd_api('save_store_profile',jsonb_build_object('id',store_id,'active',true,'fee',650,'eta',25,'weekly_hours',schedule,'image',photo,
+    'address','Rua do cadastro anterior','description','Descrição anterior'));
+  perform public.fd_api('save_store_profile',jsonb_build_object('id',store_id,'active',true,'fee',650,'eta',25,'weekly_hours',schedule,'image',photo));
+  select * into shop from fly_delivery.stores where id=store_id;
+  if shop.address is distinct from 'Rua do cadastro anterior' or shop.description is distinct from 'Descrição anterior' then
+    raise exception 'Saving the new profile cleared legacy data';
+  end if;
 end $$;
 select 'Fly Delivery: endereço digitado, entrega própria, acesso, preços, status em tempo real e histórico verificados' as integration;
 rollback;

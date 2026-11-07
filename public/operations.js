@@ -98,26 +98,24 @@ function deleteStoreForm(store,done) {
 export function storeSettings(store,done) {
   let image = store.image;
   let uploadedFile;
-  const el = modal('Configurar estabelecimento',
-    '<form class="form-stack" id="store-form"><label>Foto ou logo da loja<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
+  const el = modal('Perfil da loja',
+    '<form class="form-stack" id="store-form"><div class="store-settings-summary"><section class="panel"><h3>Foto da loja</h3><label>Foto ou logo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
     (image ? '<label class="check"><input name="remove_photo" type="checkbox"> Remover foto atual</label>' : '') +
-    '<p class="muted">JPG, PNG ou WebP, até 3 MB.</p><label>Descrição da loja<textarea name="description" rows="2" maxlength="260">' +
-    esc(store.description) + '</textarea></label><fieldset class="operator-hours"><legend>Horário de funcionamento</legend>' +
+    '<p class="muted">JPG, PNG ou WebP, até 3 MB.</p></section>' +
+    '<section class="panel"><h3>Entrega e publicação</h3><div class="fields-two"><label>Taxa de entrega (R$)<input name="fee" type="number" step="0.01" min="0" max="1000" required value="' +
+    store.fee / 100 + '"></label><label>Prazo (min)<input name="eta" type="number" min="5" max="180" required value="' +
+    store.eta + '"></label></div><label class="check"><input name="active" type="checkbox"' + (store.active || (!store.weekly_hours && !store.address) ? ' checked' : '') +
+    '> Publicar no catálogo</label></section></div>' +
+    '<fieldset class="operator-hours"><legend>Horário de funcionamento</legend><p class="muted">Marque os dias de atendimento. Os horários seguem o fuso de Brasília. Para atender 24 horas, use 00:00 nos dois campos.</p><div class="store-hours-grid">' +
     weekdays.map((day,index) => {
       const hours = store.weekly_hours?.[index];
       const enabled = Boolean(hours);
       return '<div class="operator-day"><label class="check"><input type="checkbox" name="day-' + index + '"' +
-        (enabled ? ' checked' : '') + '> ' + day + '</label><input aria-label="Abertura de ' + day +
-        '" type="time" name="open-' + index + '" value="' + esc(hours?.open ?? '09:00') + '"' + (enabled ? '' : ' disabled') +
-        '><input aria-label="Fechamento de ' + day + '" type="time" name="close-' + index + '" value="' +
-        esc(hours?.close ?? '18:00') + '"' + (enabled ? '' : ' disabled') + '></div>';
-    }).join('') + '<p class="muted">Selecione os dias abertos. O horário é de Brasília. Para 24 horas, use 00:00 nos dois campos.</p></fieldset>' +
-    '<label>Endereço do estabelecimento<input name="address" autocomplete="street-address" required minlength="5" maxlength="240" value="' +
-    esc(store.address) + '"></label><div class="fields-two"><label>Taxa de entrega (R$)<input name="fee" type="number" step="0.01" min="0" max="1000" required value="' +
-    store.fee / 100 + '"></label><label>Prazo (min)<input name="eta" type="number" min="5" max="180" required value="' +
-    store.eta + '"></label></div><p class="muted">O estabelecimento é responsável pela entrega com sua própria equipe.</p>' +
-    '<label class="check"><input name="active" type="checkbox"' + (store.active || !store.address ? ' checked' : '') +
-    '> Publicar no catálogo</label>' + formEnd('Salvar configurações') + '</form>');
+        (enabled ? ' checked' : '') + '> ' + day + '</label><label>Abertura<input aria-label="Abertura de ' + day +
+        '" type="time" name="open-' + index + '" value="' + esc(hours?.open ?? '09:00') + '" required' + (enabled ? '' : ' disabled') +
+        '></label><label>Fechamento<input aria-label="Fechamento de ' + day + '" type="time" name="close-' + index + '" value="' +
+        esc(hours?.close ?? '18:00') + '" required' + (enabled ? '' : ' disabled') + '></label></div>';
+    }).join('') + '</div></fieldset><div class="store-settings-save">' + formEnd('Salvar configurações') + '</div></form>',store.name);
   weekdays.forEach((_,index) => {
     const check = $('[name="day-' + index + '"]',el);
     check.onchange = () => {
@@ -132,7 +130,7 @@ export function storeSettings(store,done) {
       image = (await api('upload?store=' + encodeURIComponent(store.id),file)).url;
       uploadedFile = file;
     }
-    await command('save_store_profile',{ id:store.id,address:data.get('address'),description:data.get('description'),
+    await command('save_store_profile',{ id:store.id,
       fee:Math.round(Number(data.get('fee'))*100),eta:Number(data.get('eta')),
       active:data.has('active'),image:data.has('remove_photo') && !file?.size ? null : image,
       weekly_hours:weekdays.map((_,index) => data.has('day-' + index) ?
@@ -242,10 +240,10 @@ export function storeMarkup(store, role, productsOnly = false) {
       (!store.owner_login ? '<button class="btn outline" data-link-store="' + esc(store.id) + '">Criar login</button>' : '') + '</div></article>';
   }
   const actions = (productsOnly ? '' : '<button class="btn outline" data-settings="' + esc(store.id) + '">Foto e horários</button>' +
-    (store.address ? '<button class="btn outline" data-open="' + esc(store.id) + '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '')) +
+    (store.active || store.weekly_hours ? '<button class="btn outline" data-open="' + esc(store.id) + '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '')) +
     '<button class="btn primary" data-add-product="' + esc(store.id) + '">' + icon('plus') + ' Produto</button>';
   return '<article class="panel management-card"><div class="management-head"><div><span class="overline">' + labels +
-    '</span><h3>' + esc(store.name) + '</h3><p>' + esc(store.address || 'Configure o endereço e os horários para publicar.') + '</p></div><span class="status ' +
+    '</span><h3>' + esc(store.name) + '</h3></div><span class="status ' +
     (store.accepting_now ? 'status-delivered' : 'status-cancelled') + '">' +
     (store.active ? store.accepting_now ? 'Aberta agora' : 'Fechada agora' : 'Não publicada') + '</span></div>' +
     '<div class="order-actions">' + actions + '</div><div class="menu-admin">' + (store.products.length ? store.products.map(product =>

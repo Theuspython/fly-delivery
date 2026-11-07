@@ -121,7 +121,9 @@ p { line-height:1.5 }
 .store-banner::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(90deg,#281911 20%,#281911dd 44%,#28191132 100%) }
 .store-banner p { margin:7px 0 10px; max-width:36ch }
 .store-banner .restaurant-meta .icon { color:#ff875d }
-.menu-head { margin-top:24px }
+.menu-head { margin-top:24px; scroll-margin-top:calc(var(--customer-header-height, 82px) + 8px); }
+.menu-category-bar { position:sticky; top:var(--customer-header-height, 82px); z-index:20; padding:6px 0 3px; background:var(--page); border-bottom:1px solid var(--line); }
+.menu-category-bar .chips { margin-inline:0; }
 .products,.order-grid,.management-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px }
 .product { display:flex; align-items:center; gap:12px; padding:15px; min-height:130px; border:1px solid var(--line); border-radius:16px; background:var(--surface) }
 .product > div { flex:1 }
@@ -151,6 +153,21 @@ p { line-height:1.5 }
 .empty-icon,.ops-mark { display:grid; place-items:center; margin:0 auto 12px; width:45px; height:45px; border-radius:13px; color:var(--orange); background:var(--soft) }
 #dialog { border:1px solid var(--line); border-radius:20px; padding:20px; width:min(580px,calc(100% - 24px)); max-height:min(92vh,calc(100dvh - 24px)); background:var(--surface); color:var(--ink); box-shadow:0 20px 70px #2a170b35 }
 #dialog::backdrop { background:#251b1790 }
+#dialog:has(#store-form) { position:fixed; inset:0; margin:0; width:100%; max-width:none; height:100dvh; max-height:none; padding:0; border:0; border-radius:0; background:var(--page); overflow-y:auto; }
+#dialog:has(#store-form) > .dialog-head { position:sticky; top:0; z-index:2; margin:0; padding:calc(16px + env(safe-area-inset-top, 0px)) max(16px, calc((100% - 1050px) / 2)) 16px; background:var(--surface); border-bottom:1px solid var(--line); }
+#store-form { width:min(1050px, calc(100% - 32px)); margin:18px auto; padding-bottom:env(safe-area-inset-bottom, 0px); }
+.store-settings-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.store-settings-summary > .panel { min-width:0; display:grid; align-content:start; gap:12px; }
+#store-form .operator-hours { min-width:0; background:var(--surface); padding:14px; gap:12px; }
+.store-hours-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%, 285px),1fr)); gap:10px; }
+.store-settings-summary input { max-width:100%; }
+#store-form .operator-day { min-width:0; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--page); }
+#store-form .operator-day > .check { grid-column:1 / -1; min-height:24px; }
+#store-form .operator-day label { min-width:0; }
+#store-form .operator-day input[type=time] { width:100%; min-width:0; padding-inline:8px; }
+.store-settings-save { display:grid; gap:8px; }
+@media (max-width:620px) { .store-settings-summary { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:360px) { #store-form .operator-day { grid-template-columns:minmax(0,1fr); } }
 .dialog-head { display:flex; justify-content:space-between; gap:10px; align-items:start; margin-bottom:15px }
 .dialog-head h2 { font-size:1.65rem }
 .dialog-head p,.dialog-copy { margin-top:5px; color:var(--muted); font-size:.92rem; overflow-wrap:anywhere }
@@ -452,6 +469,7 @@ p { line-height:1.5 }
 .merchant-queue-summary > button:focus-visible { outline:2px solid var(--stage-color); outline-offset:3px; }
 
 .merchant-drawer nav button { width:100%; border:0; background:transparent; color:inherit; text-align:left; }
+.merchant-drawer nav .merchant-account-link { margin-top:7px; border-top:1px solid var(--line); border-radius:0 0 11px 11px; }
 .profile-avatar { display:inline-flex; align-items:center; justify-content:center; flex:none; width:38px; height:38px; border-radius:50%; overflow:hidden; background:var(--soft); border:1px solid #f4d6c6; color:var(--orange); font-size:.78rem; font-weight:800; }
 .profile-avatar img { width:100%; height:100%; object-fit:cover; }
 .profile-avatar-large { width:82px; height:82px; font-size:1.6rem; }

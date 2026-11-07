@@ -107,6 +107,7 @@ export function merchant(context) {
       drawer.setAttribute('aria-labelledby','merchant-menu-title');
       document.body.append(drawer);
       drawer.addEventListener('click',event => {
+        if (event.target.closest('[data-account]')) { closeMenu(); context.openAccount(); return; }
         if (event.target === drawer || event.target.closest('[data-close-menu]') || event.target.closest('a')) drawer.close();
       });
       drawer.addEventListener('close',() => $('[data-merchant-menu]')?.setAttribute('aria-expanded','false'));
@@ -114,7 +115,8 @@ export function merchant(context) {
     drawer.innerHTML = '<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="merchant-menu-title">Estabelecimento</h2></div>' +
       '<button class="icon-button" data-close-menu aria-label="Fechar menu">' + icon('close') + '</button></div>' +
       '<nav aria-label="Áreas do estabelecimento">' + sections.map(([key,label,symbol]) =>
-        '<a href="#' + key + '"' + (section() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) + label + '</a>').join('') + '</nav>';
+        '<a href="#' + key + '"' + (section() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) + label + '</a>').join('') +
+      (context.user?.role === 'merchant' ? '<button type="button" class="merchant-account-link" data-account>' + icon('person') + ' Minha conta</button>' : '') + '</nav>';
     drawer.showModal();
     $('[data-merchant-menu]')?.setAttribute('aria-expanded','true');
   }
@@ -163,9 +165,9 @@ export function merchant(context) {
             '<article class="panel merchant-profile">' +
             (store.image ? '<img src="' + esc(store.image) + '" alt="Foto de ' + esc(store.name) + '">' : '') +
             '<h2>' + esc(store.name) + '</h2><p>' + esc(sortCategories(store.categories).join(' · ')) +
-            '</p><p class="muted">' + esc(store.address || 'Configure o endereço para publicar a loja.') + '</p>' +
+            '</p><p class="muted">' + (store.active ? store.accepting_now ? 'Aberta agora' : 'Fechada agora' : 'Não publicada') + '</p>' +
             '<div class="order-actions"><button class="btn primary" data-settings="' + esc(store.id) +
-            '">Foto, horários e entrega</button>' + (store.address ? '<button class="btn outline" data-open="' + esc(store.id) +
+            '">Foto, horários e entrega</button>' + (store.active || store.weekly_hours ? '<button class="btn outline" data-open="' + esc(store.id) +
             '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '') + '</div></article>'
         ).join('') + '</div>' : '<div class="panel">' + empty('Nenhuma loja vinculada','A administração pode criar o acesso ao estabelecimento.','store') + '</div>';
       }
