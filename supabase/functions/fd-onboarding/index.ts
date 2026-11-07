@@ -34,7 +34,8 @@ async function rpc(name: string, body: unknown, token: string) {
   throw new Failure(502,'O cadastro não pôde ser concluído. Tente novamente.');
 }
 
-const categories = new Set(['Hambúrguer','Pizza','Japonesa','Brasileira','Açaí','Telecerveja','Marmitex','Outros']);
+const categories = new Set(['Hambúrguer','Pizza','Japonesa','Porções','Açaí','Telecerveja','Marmitex','Bebidas']);
+const legacyCategories = new Map([['Brasileira','Porções'],['Outros','Bebidas']]);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const validPassword = (value: unknown): value is string =>
   typeof value === 'string' && value.length >= 8 && new TextEncoder().encode(value).length <= 72;
@@ -69,7 +70,7 @@ async function provision(request: Request, input: Record<string,unknown>) {
   if (kind === 'store' && (store_id ? typeof store_id !== 'string' || !uuid.test(store_id) :
       typeof input.name !== 'string' || input.name.trim().length < 2 || input.name.trim().length > 80 ||
       !Array.isArray(input.categories) || !input.categories.length || input.categories.length > categories.size ||
-      input.categories.some(category => !categories.has(String(category))))) {
+      input.categories.some(category => typeof category !== 'string' || !categories.has(legacyCategories.get(category) ?? category)))) {
     throw new Failure(400,'Confira o nome e as categorias do estabelecimento.');
   }
   const operator = { role,login,request_id };
