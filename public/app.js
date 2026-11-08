@@ -29,7 +29,9 @@ function header() {
     brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
     (clientReady ? '<button type="button" class="icon-button notification-button" data-notifications aria-label="Notificações" aria-haspopup="dialog">' + icon('bell') +
     '<span class="notification-count" data-notification-count aria-hidden="true" hidden></span></button>' :
-    page === 'loja' && current?.role === 'merchant' ? '<a class="icon-button home-button" data-merchant-home href="#pedidos" aria-label="Voltar aos pedidos em andamento" title="Pedidos em andamento">' + icon('home') + '</a>' :
+    page === 'loja' && current?.role === 'merchant' ? '<a class="icon-button home-button" data-merchant-home href="#pedidos" aria-label="Voltar aos pedidos em andamento" title="Pedidos em andamento">' + icon('home') + '</a>' +
+    '<button type="button" class="icon-button notification-button" data-merchant-alerts aria-label="Notificações" aria-haspopup="dialog">' + icon('bell') +
+    '<span class="notification-count" data-merchant-alert-count aria-hidden="true" hidden></span></button>' :
     page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
     (current ? 'Minha conta' : 'Entrar') + '">' + icon('person') + '</button>' : '') +
     (clientReady ? '<a class="cart-button" href="#carrinho" aria-label="Carrinho">' + icon('bag') +
@@ -48,6 +50,8 @@ function header() {
   if (notifications) notifications.onclick = () => app.openNotifications();
   const merchantHome = $('[data-merchant-home]');
   if (merchantHome) merchantHome.onclick = () => window.scrollTo(0,0);
+  const merchantAlerts = $('[data-merchant-alerts]');
+  if (merchantAlerts) merchantAlerts.onclick = () => app.openAlerts();
   const button = $('[data-account]',$('#top'));
   if (button) button.onclick = () => current ? account() : auth();
   if (clientReady) app.updateHeader();
@@ -167,7 +171,7 @@ async function loadSession() {
 
 function renderApp() {
   if (page === 'loja' && !current) {
-    app.closeMenu();
+    app.stop();
     header();
     if (checkedSession) merchantAuth();
     else main.innerHTML = '<div class="wrap page"><p class="muted" role="status">Verificando sua sessão…</p></div>';

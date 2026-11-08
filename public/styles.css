@@ -98,6 +98,25 @@ p { line-height:1.5 }
 .restaurants { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px }
 .catalog-more { display:flex; justify-content:center; margin-top:16px; }
 .batch-sentinel { height:1px; pointer-events:none; }
+[data-stock-quantity][hidden] { display:none; }
+.inventory-intro { margin-bottom:16px; }
+.inventory-store + .inventory-store,.inventory-group + .inventory-group { margin-top:20px; }
+.inventory-group h3 { margin:12px 0 8px; }
+.inventory-grid,.platform-coupon-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:12px; }
+.inventory-card { border-left:4px solid #307858; }
+.inventory-card.inventory-low { border-left-color:#ad6a1b; background:#fffaf0; }
+.inventory-card.inventory-empty { border-left-color:#b6301c; background:#fff6f4; }
+.inventory-card-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px; }
+.inventory-card-head h4 { margin:0; overflow-wrap:anywhere; }
+.inventory-status,.product-stock-out { border-radius:6px; padding:3px 7px; background:#e7f5ed; color:#176341; font-size:.75rem; font-weight:800; }
+.inventory-low .inventory-status { background:#fcebc8; color:#754411; }
+.inventory-empty .inventory-status,.product-stock-out { background:#fce7e2; color:#922b1e; }
+.product-stock-out { display:table; margin-top:5px; }
+.inventory-card dl { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.inventory-card dt { color:var(--muted); font-size:.75rem; }
+.inventory-card dd { margin:4px 0 0; font-weight:800; overflow-wrap:anywhere; }
+.platform-coupon-list { margin-top:12px; }
+.platform-coupon-card .order-actions { margin-top:9px; }
 .restaurant-card { min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:17px; background:var(--surface); transition:transform .2s,box-shadow .2s }
 .restaurant-card:hover { transform:translateY(-3px); box-shadow:0 10px 32px #5c352313 }
 .restaurant-photo { position:relative; aspect-ratio:1.58; background:#e8dbd0 }

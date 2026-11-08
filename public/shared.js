@@ -160,7 +160,7 @@ export function orderCard(order, actions = '', options = {}) {
     : '';
   const body = progress + '<div class="order-body">' + details +
     '<dl class="order-totals"><div><dt>Produtos</dt><dd>' + money(order.gross_subtotal ?? order.subtotal) + '</dd></div>' +
-    (order.coupon_discount_cents > 0 ? '<div><dt>Cupom ' + esc(order.coupon_code) + '</dt><dd>− ' + money(order.coupon_discount_cents) + '</dd></div>' : '') +
+    (order.coupon_discount_cents > 0 ? '<div><dt>' + (order.coupon_source === 'platform' ? 'Cupom Fly Delivery ' : 'Cupom ') + esc(order.coupon_code) + '</dt><dd>− ' + money(order.coupon_discount_cents) + '</dd></div>' : '') +
     (order.platform_discount_cents > 0 ? '<div><dt>Promoção Fly Delivery</dt><dd>− ' + money(order.platform_discount_cents) + '</dd></div>' : '') +
     '<div><dt>Entrega</dt><dd>' + money(order.fee) +
     '</dd></div><div class="order-grand-total"><dt>Total</dt><dd>' + money(order.subtotal + order.fee) + '</dd></div></dl></div>' + timeline + (actions ? '<div class="order-actions">' + actions + '</div>' : '');

@@ -25,7 +25,7 @@ function storeRating(store) {
   const label = ratingNumber.format(average);
   return '<span class="store-rating" role="img" aria-label="Nota média ' + label + ' de 5">' + label + '</span>';
 }
-const unavailableCoupon = error => /^(Cupom inválido ou fora do horário de validade|O cupom não se aplica aos produtos deste carrinho)\./.test(error.message);
+const unavailableCoupon = error => /^(Cupom inválido ou fora do horário de validade|O cupom não se aplica aos produtos deste carrinho|Cupom da plataforma indisponível durante o dia promocional)\./.test(error.message);
 function cashCents(value) {
   const match = /^(\d{1,8})(?:[,.](\d{1,2}))?$/.exec(value.trim());
   if (!match) return null;
@@ -295,8 +295,16 @@ export function customer(context) {
     if(!meals.valid)return null;
     return {key,product,options,mealSelections:meals.selections,mealGroups:meals.groups,size: size?.name ?? '',basePrice,quantity:cart.items[key],price:basePrice+options.reduce((sum,option)=>sum+option.price,0)};
   }
+  function cartProductQuantity(store,product) {
+    if (cart.store !== store.id) return 0;
+    return Object.entries(cart.items).reduce((sum,[key,quantity]) => key.split(':',1)[0] === product.id ? sum+quantity : sum,0);
+  }
+
   function setItem(store, product, increment, ids = optionIds(product), size = productSize(product)?.name ?? '', selection = mealSelection(product,size)) {
     if (checkoutPending) return;
+    if (increment > 0 && product.available_stock != null && cartProductQuantity(store,product)+increment > product.available_stock) {
+      return toast('A quantidade disponível deste item já foi atingida.');
+    }
     const meals=resolveMealSelection(product,size,selection);
     if(!meals.valid){toast(meals.reason);return;}
     const key = lineKey(product,ids,size,meals.selections);
@@ -649,7 +657,8 @@ export function customer(context) {
 
   function menuProductMarkup(product,headingTag) {
     return '<article class="product" data-menu-product="' + esc(product.id) + '"><div class="product-content"><div><' + headingTag + '>' + esc(product.name) + '</' + headingTag + '><p>' + esc(product.description) + '</p><strong>' +
-      ((product.sizes ?? []).length ? 'A partir de ' : '') + money(product.price) + '</strong></div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
+      ((product.sizes ?? []).length ? 'A partir de ' : '') + money(product.price) + '</strong>' +
+      (product.available_stock === 0 ? '<span class="product-stock-out">Esgotado</span>' : '') + '</div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
       '</div>' + ((product.sizes ?? []).length ? '<fieldset class="product-sizes"><legend>Escolha o tamanho</legend><div>' + product.sizes.map(size=>
         '<label><input type="radio" name="size-' + esc(product.id) + '" data-size value="' + esc(size.name) + '"' + (productSize(product)?.name===size.name ? ' checked' : '') + '><span><b>' + esc(size.name) + '</b><small>' + money(size.price) + '</small></span></label>').join('') + '</div></fieldset>' : '') +
       '<div data-meal-choices></div>' + ((product.options ?? []).length ? '<details class="product-options"><summary>Opcionais <span>' + product.options.length + ' disponíveis</span></summary><div class="option-choices">' +
@@ -679,7 +688,8 @@ export function customer(context) {
       if(!store.is_open)for(const input of card.querySelectorAll('[data-meal-option],[data-clear-meal]'))input.disabled=true;
       $('[data-product-quantity]',card).textContent = quantity;
       $('[data-menu-delta="-1"]',card).disabled = quantity === 0;
-      $('[data-menu-delta="1"]',card).disabled = !store.is_open || quantity >= 25;
+      const stockReached = product.available_stock != null && cartProductQuantity(store,product) >= product.available_stock;
+      $('[data-menu-delta="1"]',card).disabled = !store.is_open || quantity >= 25 || stockReached;
     }
   }
 
@@ -867,7 +877,7 @@ export function customer(context) {
         const result = await command('quote_order',{ ...pricingInput,coupon_code:couponCode });
         if (!checkout.isConnected || sequence !== revision) return;
         quote = result;
-        discounts.innerHTML = discountLine('Cupom ' + esc(result.coupon_code),result.coupon_discount_cents) +
+        discounts.innerHTML = discountLine((result.coupon_source === 'platform' ? 'Cupom Fly Delivery ' : 'Cupom ') + esc(result.coupon_code),result.coupon_discount_cents) +
           discountLine('Promoção Fly Delivery',result.platform_discount_cents);
         total.textContent = money(result.total);
         quoteStatus.textContent = result.coupon_code ? 'Cupom liberado' : '';
@@ -926,7 +936,7 @@ export function customer(context) {
         await command('place',{ ...pricingInput,coupon_code:couponCode,quote,request_id:requestId,
           address:chosen.text,payment:method,cash_tendered_cents:tendered,note:fields.get('note') });
       } catch (err) {
-        if (/mudaram|cupom|cardápio|opcionais|escolhas/i.test(err.message)) {
+        if (/mudaram|cupom|cardápio|opcionais|escolhas|estoque insuficiente/i.test(err.message)) {
           invalidateQuote('');
           resetRequest();
           await loadStore(store.id);

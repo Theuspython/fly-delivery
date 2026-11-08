@@ -3,11 +3,13 @@ import { invoicesMarkup, suspensionBanner } from './invoices.js';
 import { productForm, storeSettings, storeMarkup } from './operations.js';
 import { couponsMarkup, couponForm } from './promotions.js';
 import { renderLiveMarkup } from './live-markup.js';
+import { inventoryMarkup, adjustStockForm, createMerchantAlerts } from './inventory.js';
 
 const sections = [
   ['faturas','Faturas Fly Delivery','shield'],
   ['pedidos','Pedidos em andamento','bag'],
   ['produtos','Cadastro de produtos','burger'],
+  ['estoque','Estoque','bag'],
   ['financeiro','Financeiro','grid'],
   ['cupons','Cupons de desconto','tag'],
   ['perfil','Perfil da loja','store']
@@ -67,6 +69,7 @@ function financeMarkup(data) {
 }
 
 export function merchant(context) {
+  const alerts = createMerchantAlerts(context);
   let timer;
   let sequence = 0;
   let busy = false;
@@ -97,6 +100,7 @@ export function merchant(context) {
       if (returnFields.transaction_nsu && (returnFields.slug || returnFields.invoice_slug) && returnFields.order_nsu) {
         const result = await api('billing/verify',returnFields);
         toast(result.paid ? 'Pagamento confirmado. Obrigado!' : 'Pagamento ainda não confirmado. Aguarde e atualize as faturas.');
+        if (result.paid) alerts.sync();
       }
       await refresh(true);
     } catch(error) { toast(error.message); }
@@ -161,6 +165,9 @@ export function merchant(context) {
       } else if (currentSection === 'financeiro') {
         const data = await command('merchant_finance',{ date_from:fromDate,date_to:toDate,page });
         markup = financeMarkup(data);
+      } else if (currentSection === 'estoque') {
+        stores = await command('managed_stores');
+        markup = inventoryMarkup(stores);
       } else if (currentSection === 'cupons') {
         const [managed, saved] = await Promise.all([command('managed_stores'),command('merchant_coupons')]);
         if (revision !== sequence || context.user !== user || currentSection !== section()) return;
@@ -211,11 +218,13 @@ export function merchant(context) {
       '<h1>' + labels[currentSection] + '</h1></div></div><div id="merchant-body"></div></div>';
     const body = $('#merchant-body');
     if (context.user?.role !== 'merchant') {
+      alerts.stop();
       body.innerHTML = '<div class="panel">' + empty(context.user ? 'Acesso restrito' : 'Entre para continuar',
         'Use o login e a senha do estabelecimento.','store') + '<button class="btn primary" ' +
         (context.user ? 'data-switch-account>Trocar de conta' : 'data-signin>Entrar') + '</button></div>';
       return;
     }
+    alerts.start();
     let controls = '';
     if (currentSection === 'financeiro') {
       controls = '<form class="merchant-date-filter form-stack" id="finance-filter"><label>Período<select name="mode"><option value="day"' +
@@ -280,6 +289,7 @@ export function merchant(context) {
       const showAccepted = status==='preparing' && section()==='pedidos' && context.user?.id===owner;
       if (showAccepted) { queueFilter='preparing'; openOrderId=id; }
       await refresh(true);
+      if (status === 'delivered' || status === 'cancelled') alerts.sync();
       if (showAccepted && result.isConnected) {
         const detail=$('#merchant-order-' + id);
         detail?.closest('.order-card')?.scrollIntoView?.({behavior:'smooth',block:'nearest'});
@@ -316,9 +326,15 @@ export function merchant(context) {
         return;
       }
       const store = stores.find(item => item.id === (button.dataset.settings || button.dataset.open || button.dataset.addProduct || button.dataset.store));
+      const refreshInventory = async () => { await refresh(true); alerts.sync(); };
+      if (button.dataset.adjustStock) {
+        const product = store?.products.find(item => item.id === button.dataset.adjustStock);
+        if (product) adjustStockForm(store,product,refreshInventory);
+        return;
+      }
       if (button.dataset.settings) storeSettings(store,() => refresh(true));
-      if (button.dataset.addProduct) productForm(store,null,() => refresh(true));
-      if (button.dataset.editProduct) productForm(store,store.products.find(item => item.id === button.dataset.editProduct),() => refresh(true));
+      if (button.dataset.addProduct) productForm(store,null,refreshInventory);
+      if (button.dataset.editProduct) productForm(store,store.products.find(item => item.id === button.dataset.editProduct),refreshInventory);
       if (button.dataset.page !== undefined) {
         page = Number(button.dataset.page);
         openOrderId = null;
@@ -335,7 +351,8 @@ export function merchant(context) {
     };
     refresh(true);
     verifyReturn();
-    if (['pedidos','faturas'].includes(currentSection)) timer = setInterval(() => { if (!document.hidden) refresh(); },6000);
+    if (['pedidos','faturas','estoque'].includes(currentSection)) timer = setInterval(() => { if (!document.hidden) refresh(); },6000);
   }
-  return { render,openMenu,closeMenu };
+  function stop() { clearInterval(timer); sequence++; busy = false; closeMenu(); alerts.stop(); }
+  return { render,openMenu,closeMenu,stop,openAlerts:alerts.open };
 }
