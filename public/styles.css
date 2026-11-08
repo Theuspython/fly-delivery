@@ -69,10 +69,10 @@ p { line-height:1.5 }
 .search-field { display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:0 12px; min-height:42px; color:var(--muted) }
 .search-field input { width:178px; border:0; background:transparent; color:var(--ink); outline:none; font-size:16px }
 .search-field:focus-within { outline:2px solid var(--orange) }
-.showcase-tools { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; margin-bottom:8px; align-items:start; }
+.showcase-tools { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; margin-bottom:8px; align-items:center; }
 .showcase-tools .search-field { width:100%; min-width:0; }
 .showcase-tools .search-field input { width:100%; min-width:0; }
-.showcase-filters { position:relative; justify-self:start; z-index:30; }
+.showcase-filters { position:relative; justify-self:end; z-index:30; }
 .showcase-filters > summary { list-style:none; cursor:pointer; user-select:none; }
 .showcase-filters > summary::-webkit-details-marker { display:none; }
 .showcase-filters > summary.filter-active,.showcase-filters[open] > summary { color:var(--orange); background:var(--soft); border-color:#f1cbb9; }
@@ -98,9 +98,7 @@ p { line-height:1.5 }
 .restaurant-photo img { width:100%; height:100%; object-fit:cover }
 .store-coupon-tag,.product-rank { position:absolute; top:8px; left:8px; padding:5px 8px; border-radius:7px; background:#176341; color:#fff; font-size:.75rem; font-weight:800; }
 .product-rank { background:#312116; }
-.store-rating { position:absolute; bottom:8px; left:8px; display:inline-flex; align-items:center; gap:5px; padding:4px 7px; border-radius:8px; background:#21140ef2; color:#fff; font-size:.75rem; line-height:1; }
-.store-rating-stars { position:relative; display:block; color:#a89b92; font-size:.76rem; white-space:nowrap; }
-.store-rating-stars > span { position:absolute; inset:0 auto 0 0; color:#ffd164; overflow:hidden; }
+.store-rating { position:absolute; bottom:8px; left:8px; padding:4px 7px; border-radius:8px; background:#21140ef2; color:#fff; font-size:.75rem; font-weight:800; line-height:1; }
 .ranked-product .restaurant-content > p { min-height:0; margin-bottom:8px; }
 .ranked-product .restaurant-content > strong { color:var(--orange); font-size:.9rem; }
 .closed-tag,.open-tag { position:absolute; top:10px; right:10px; border-radius:100px; padding:5px 9px; font-size:.67rem; font-weight:800; color:white; background:#2e211b }

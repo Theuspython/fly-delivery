@@ -22,10 +22,7 @@ function storeRating(store) {
   const average = Number(store.rating_average);
   if (!store.rating_count || !Number.isFinite(average)) return '';
   const label = ratingNumber.format(average);
-  const stars = '★★★★★';
-  const fill = Math.min(100,Math.max(0,average * 20));
-  return '<span class="store-rating" role="img" aria-label="' + label + ' de 5 estrelas"><span class="store-rating-stars" aria-hidden="true">' + stars +
-    '<span style="width:' + fill + '%">' + stars + '</span></span><strong aria-hidden="true">' + label + '</strong></span>';
+  return '<span class="store-rating" role="img" aria-label="Nota média ' + label + ' de 5">' + label + '</span>';
 }
 const unavailableCoupon = error => /^(Cupom inválido ou fora do horário de validade|O cupom não se aplica aos produtos deste carrinho)\./.test(error.message);
 function cashCents(value) {
