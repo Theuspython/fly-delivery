@@ -4,6 +4,7 @@ import { percentage } from './invoices.js';
 import { searchCatalog } from './catalog-search.js';
 import { mealGroups,resolveMealSelection,mealChoicesMarkup } from './meal-choices.js';
 import { renderLiveMarkup } from './live-markup.js';
+import { customerNotifications } from './customer-notifications.js';
 
 function stored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
@@ -35,6 +36,19 @@ function cashCents(value) {
 const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
 const storeCategories = store => sortCategories(store.categories ?? [store.category]);
 const storePhoto = store => store.image || imageFor(store,store.products.find(product => product.image));
+const deliveryTag = store => '<span' + (store.fee === 0 ? ' class="free-delivery" aria-label="Entrega grátis"' : '') + '>' +
+  icon('bike') + ' ' + (store.fee ? money(store.fee) : 'Grátis') + '</span>';
+
+function confirmPurchase(store,total) {
+  const el = modal('Confirmar pedido','<div class="purchase-confirmation"><div class="purchase-total"><span>Total do pedido</span><strong>' +
+    money(total) + '</strong></div><div class="purchase-actions"><button class="btn outline" type="button" data-close autofocus>Voltar</button>' +
+    '<button class="btn primary" type="button" data-send-order>Enviar pedido</button></div></div>',store.name);
+  return new Promise(resolve => {
+    let accepted = false;
+    $('[data-send-order]',el).onclick = () => { accepted = true; el.close(); };
+    el.addEventListener('close',() => resolve(accepted),{once:true});
+  });
+}
 const weekdays = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
 const hourLabel = time => Number(time.slice(0,2)) + 'h' + (time.slice(3) === '00' ? '' : time.slice(3));
 
@@ -49,6 +63,7 @@ function storeHoursLabel(today) {
 }
 
 export function customer(context) {
+  const notifications = customerNotifications();
   let stores = [];
   const storeRanks = new Map();
   let loaded = false;
@@ -160,6 +175,7 @@ export function customer(context) {
 
   function updateHeader() {
     measureHeader();
+    notifications.updateBadge();
     $('#cart-count').textContent = Object.values(cart.items).reduce((sum, amount) => sum + amount, 0);
     updateFloatingCart();
   }
@@ -305,7 +321,7 @@ export function customer(context) {
       '</div><div class="restaurant-content">' + categoryTags(store) + '<div class="restaurant-heading"><h3>' + esc(store.name) + '</h3><span class="restaurant-arrow">' + icon('arrow') +
       '</span></div><p>' + esc(store.description) + '</p>' +
       '<div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta +
-      ' min</span><span>' + icon('bike') + ' ' + (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></a>';
+      ' min</span>' + deliveryTag(store) + '</div></div></a>';
   }
 
   function bestSellers() {
@@ -435,8 +451,7 @@ export function customer(context) {
     main.innerHTML = '<div class="wrap page"><a class="back-link" href="#lojas">' + icon('back') + ' Estabelecimentos</a>' +
       '<section class="store-banner"><img src="' + esc(storePhoto(store)) +
       '" alt=""><div>' + categoryTags(store,true) + '<h1>' + esc(store.name) + '</h1><p>' + esc(store.description) +
-      '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta + ' min</span><span>' + icon('bike') + ' ' +
-      (store.fee ? money(store.fee) : 'Entrega grátis') + '</span>' +
+      '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta + ' min</span>' + deliveryTag(store) +
       (hours ? '<span class="store-today-hours">' + icon('calendar') + ' ' + esc(hours) + '</span>' : '') + '</div></div></section>' +
       (!store.is_open ? '<p class="pilot-label">Esta loja está fechada.</p>' : '') +
       promotionBanner(store.promotion_bps) +
@@ -765,6 +780,8 @@ export function customer(context) {
       const chosen = deliveryAddress();
       if (!chosen) return addressDialog();
       if (!context.user) return context.signIn();
+      const approvedQuote = quote;
+      if (!await confirmPurchase(store,approvedQuote.total) || !active || !checkout.isConnected || route() !== 'carrinho' || quote !== approvedQuote) return;
       requestId ??= crypto.randomUUID();
       localStorage.setItem(requestKey,JSON.stringify(requestId));
       checkoutPending = couponInput.disabled = apply.disabled = true;
@@ -857,9 +874,10 @@ export function customer(context) {
     },15000);
   }
 
-  function orderHistoryView() {
-    main.innerHTML = '<div class="wrap page customer-history-page"><span class="overline accent">SEUS PEDIDOS</span><h1>Histórico de pedidos</h1>' +
-      '<p class="muted history-hint">Entregues e cancelados. Deslize para baixo para ver mais pedidos.</p>' +
+  function orderHistoryView(targetId) {
+    main.innerHTML = '<div class="wrap page customer-history-page">' + (targetId ? '<a class="back-link" href="#historico">' + icon('back') + ' Histórico de pedidos</a>' : '') +
+      '<span class="overline accent">SEUS PEDIDOS</span><h1>' + (targetId ? 'Pedido entregue' : 'Histórico de pedidos') + '</h1>' +
+      (targetId ? '' : '<p class="muted history-hint">Entregues e cancelados. Deslize para baixo para ver mais pedidos.</p>') +
       '<p class="muted history-count" aria-live="polite"></p><div id="order-list" class="history-scroll" role="region" aria-label="Histórico de pedidos" tabindex="0">' +
       '<div class="order-grid customer-order-grid history-grid"></div><div class="history-more"><p class="muted" data-history-message role="status">Carregando pedidos…</p>' +
       '<button class="btn outline" data-history-more hidden>Carregar mais pedidos</button></div></div></div>';
@@ -901,7 +919,8 @@ export function customer(context) {
       }).join('');
       renderLiveMarkup(grid,markup);
       $('.history-count').textContent = orders.length ? orders.length+' de '+count+' pedidos' : '';
-      message.textContent = count ? (page+1<pages ? 'Role para carregar os próximos pedidos.' : 'Você chegou ao fim do histórico.') : 'Nenhum pedido no histórico. Pedidos entregues ou cancelados aparecerão aqui.';
+      message.textContent = targetId ? count ? '' : 'Pedido entregue indisponível.' :
+        count ? (page+1<pages ? 'Role para carregar os próximos pedidos.' : 'Você chegou ao fim do histórico.') : 'Nenhum pedido no histórico. Pedidos entregues ou cancelados aparecerão aqui.';
       more.hidden=page+1>=pages;
       more.textContent='Carregar mais pedidos';
       requestAnimationFrame(measure);
@@ -914,7 +933,7 @@ export function customer(context) {
       more.disabled=true;
       list.setAttribute('aria-busy','true');
       try {
-        const data=await command('customer_order_history',{page:append?page+1:0,page_size:4});
+        const data=await command('customer_order_history',targetId ? {order_id:targetId} : {page:append?page+1:0,page_size:4});
         if (!connected()) return;
         const signature=JSON.stringify({orders:data.orders,count:data.count});
         if (!append && firstSignature===signature) return;
@@ -960,6 +979,7 @@ export function customer(context) {
       paint();
       bindSubmit(form,async fields => {
         const {rating} = await command('customer_rate_order',{ id:order.id,rating:Number(fields.get('rating')) });
+        notifications.sync();
         if (form.isConnected && el.open) el.close();
         if (connected()) {
           const saved = orders.find(item => item.id === order.id);
@@ -1023,7 +1043,11 @@ export function customer(context) {
       if (selectedProduct) menuCategory = 'Todas';
     }
     if (view === 'pedidos') orderView();
-    else if (view === 'historico') orderHistoryView();
+    else if (view === 'historico' || view.startsWith('historico/')) {
+      const targetId = view.startsWith('historico/') ? view.slice('historico/'.length) : null;
+      if (changedView && targetId) openOrderId = targetId;
+      orderHistoryView(targetId);
+    }
     else if (view === 'enderecos') addressView();
     else if (view === 'carrinho' && loaded) cartView();
     else if (view.startsWith('loja/') && loaded) {
@@ -1068,7 +1092,7 @@ export function customer(context) {
   });
   async function refreshCatalog() {
     const view = route();
-    if (!active || checkoutPending || ['pedidos','historico','enderecos'].includes(view) || $('#dialog').open) return;
+    if (!active || checkoutPending || ['pedidos','historico','enderecos'].includes(view) || view.startsWith('historico/') || $('#dialog').open) return;
     const before = JSON.stringify(stores);
     const hadError = Boolean(error);
     await loadCatalog();
@@ -1079,6 +1103,7 @@ export function customer(context) {
   const catalogTimer = setInterval(() => { if (!document.hidden) refreshCatalog(); },10000);
   function stop() {
     active = false;
+    notifications.stop();
     if (nativeScrollRestoration) history.scrollRestoration = nativeScrollRestoration;
     headerObserver?.disconnect();
     main.style.removeProperty('--customer-header-height');
@@ -1097,5 +1122,5 @@ export function customer(context) {
     document.removeEventListener('click',closeShowcaseFilter);
     document.removeEventListener('keydown',closeShowcaseFilter);
   }
-  return { render, stop, updateHeader, openMenu, closeMenu, goHome };
+  return { render, stop, updateHeader, openMenu, closeMenu, goHome, openNotifications:notifications.open };
 }

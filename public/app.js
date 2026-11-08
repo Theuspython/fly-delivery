@@ -22,11 +22,13 @@ function header() {
   const clientReady = page === 'cliente' && profile;
   const workspace = page === 'cliente' ? '' : '<span class="workspace-label">' + esc(titles[page]) + '</span>';
   $('#top').innerHTML = '<div class="wrap topbar' + (page === 'loja' && !current ? ' merchant-guest-topbar' : '') + '">' +
-    (clientReady ? '<button class="icon-button customer-menu-button" data-customer-menu aria-label="Abrir menu do cliente" aria-controls="customer-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
+    (clientReady ? '<div class="customer-quick-nav"><button class="icon-button customer-menu-button" data-customer-menu aria-label="Abrir menu do cliente" aria-controls="customer-navigation" aria-expanded="false">' + icon('menu') + '</button>' +
+    '<a class="icon-button home-button" data-home href="#lojas" aria-label="Voltar à vitrine" title="Início">' + icon('home') + '</a></div>' : '') +
     (page === 'loja' && current?.role === 'merchant' ? '<button class="icon-button merchant-menu-button" data-merchant-menu aria-label="Abrir menu do estabelecimento" aria-controls="merchant-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     (page === 'admin' ? '<button class="icon-button merchant-menu-button" data-admin-menu aria-label="Abrir menu da administração" aria-controls="admin-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
-    (clientReady ? '<a class="icon-button home-button" data-home href="#lojas" aria-label="Voltar à vitrine" title="Início">' + icon('home') + '</a>' :
+    (clientReady ? '<button type="button" class="icon-button notification-button" data-notifications aria-label="Notificações" aria-haspopup="dialog">' + icon('bell') +
+    '<span class="notification-count" data-notification-count aria-hidden="true" hidden></span></button>' :
     page === 'loja' && current?.role === 'merchant' ? '<a class="icon-button home-button" data-merchant-home href="#pedidos" aria-label="Voltar aos pedidos em andamento" title="Pedidos em andamento">' + icon('home') + '</a>' :
     page !== 'cliente' || current ? '<button class="icon-button account-button" data-account aria-label="' +
     (current ? 'Minha conta' : 'Entrar') + '">' + icon('person') + '</button>' : '') +
@@ -42,6 +44,8 @@ function header() {
   if (adminMenu) adminMenu.onclick = () => app.openMenu();
   const homeButton = $('[data-home]');
   if (homeButton) homeButton.onclick = event => { event.preventDefault(); app.goHome(); };
+  const notifications = $('[data-notifications]');
+  if (notifications) notifications.onclick = () => app.openNotifications();
   const merchantHome = $('[data-merchant-home]');
   if (merchantHome) merchantHome.onclick = () => window.scrollTo(0,0);
   const button = $('[data-account]',$('#top'));
