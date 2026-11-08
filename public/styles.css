@@ -97,6 +97,7 @@ p { line-height:1.5 }
 .pilot-label .icon { width:15px; height:15px; margin-right:4px }
 .restaurants { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px }
 .catalog-more { display:flex; justify-content:center; margin-top:16px; }
+.batch-sentinel { height:1px; pointer-events:none; }
 .restaurant-card { min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:17px; background:var(--surface); transition:transform .2s,box-shadow .2s }
 .restaurant-card:hover { transform:translateY(-3px); box-shadow:0 10px 32px #5c352313 }
 .restaurant-photo { position:relative; aspect-ratio:1.58; background:#e8dbd0 }
@@ -142,12 +143,18 @@ p { line-height:1.5 }
 .page { padding-top:39px; padding-bottom:65px; min-height:65vh }
 .page > h1 { margin:8px 0 22px }
 .back-link { display:inline-flex; align-items:center; gap:8px; margin-bottom:17px; font-weight:800; color:var(--orange); font-size:.88rem }
-.store-banner { position:relative; isolation:isolate; min-height:245px; overflow:hidden; display:flex; align-items:end; border-radius:var(--radius); background:#281911; color:#fff8ee; padding:27px; margin-bottom:18px }
+.store-banner { position:relative; isolation:isolate; min-height:245px; overflow:hidden; display:flex; align-items:end; border-radius:var(--radius); background:#281911; color:#fff8ee; padding:27px 27px 53px; margin-bottom:18px }
 .store-banner img { position:absolute; inset:0 0 0 auto; width:65%; height:100%; object-fit:cover; z-index:-2 }
 .store-banner::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(90deg,#281911 20%,#281911dd 44%,#28191132 100%) }
 .store-banner p { margin:7px 0 10px; max-width:36ch }
 .store-banner .restaurant-meta .icon { color:#ff875d }
 .menu-head { margin-top:24px; scroll-margin-top:calc(var(--customer-header-height, 82px) + 8px); }
+.menu-coupon-button { color:var(--orange); border-color:#f1cbb9; background:var(--soft); }
+.menu-coupon-unavailable { color:var(--muted); font-size:.79rem; text-align:right; }
+.store-coupon-list { display:grid; gap:10px; }
+.store-coupon-entry { display:flex; align-items:end; gap:8px; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--page); }
+.store-coupon-entry label { flex:1; min-width:0; display:grid; gap:5px; font-size:.82rem; color:var(--muted); overflow-wrap:anywhere; }
+.store-coupon-entry input { width:100%; min-height:43px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font-size:1rem; font-weight:800; }
 .menu-category-bar { position:sticky; top:var(--customer-header-height, 82px); z-index:20; padding:6px 0 3px; background:var(--page); border-bottom:1px solid var(--line); }
 .menu-category-bar .chips { margin-inline:0; }
 .showcase-category-bar + .catalog { scroll-margin-top:calc(var(--customer-header-height, 82px) + 78px); }
@@ -306,7 +313,7 @@ p { line-height:1.5 }
   .footer-inner { padding:19px 0 }
   .page { padding-top:20px; padding-bottom:40px }
   .split,.products,.management-grid { grid-template-columns:1fr }
-  .store-banner { min-height:200px; padding:17px }
+  .store-banner { min-height:200px; padding:17px 17px 45px }
   .store-banner img { width:100% }
   .store-banner::before { background:linear-gradient(90deg,#281911ed,#281911a8,#28191130) }
   .order-grid { grid-template-columns:1fr }
@@ -560,6 +567,8 @@ p { line-height:1.5 }
 .store-category-tags::-webkit-scrollbar { display:none; }
 .store-category-tags:focus-visible { outline:2px solid var(--orange); outline-offset:2px; }
 .store-category-tags > span { display:inline-block; flex:none; white-space:nowrap; padding:3px 6px; border-radius:6px; color:#85533e; background:#fbefe7; font-size:.65rem; font-weight:700; line-height:1.25; }
+.store-banner > .store-category-tags-banner { position:absolute; inset:auto 0 0; width:auto; margin:0; padding:7px clamp(17px,4vw,27px); background:#28191185; }
+.store-banner > .store-category-tags-banner:focus-visible { outline-offset:-2px; }
 .store-category-tags-banner > span { color:#fff4e9; background:#ffffff1c; border:1px solid #ffffff24; }
 .menu-count { font-size:.82rem; margin:4px 0 12px; }
 .menu-empty { grid-column:1/-1; }

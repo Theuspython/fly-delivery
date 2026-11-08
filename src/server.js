@@ -4,6 +4,7 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createBilling } from './billing.js';
+import { catalogPage } from './catalog.js';
 import { RealtimeClient } from '@supabase/realtime-js';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url)).replace(/\/$/, '');
@@ -250,6 +251,17 @@ async function streamOrders(req,res) {
   });
 }
 
+let catalogCache;
+let catalogRequest;
+function catalogSnapshot() {
+  if (catalogCache && catalogCache.expires > Date.now()) return Promise.resolve(catalogCache.stores);
+  catalogRequest ??= upstream('/rest/v1/rpc/fd_api', {body:{action:'catalog',input:{}}}).then(stores => {
+    catalogCache = {stores,expires:Date.now()+4000};
+    return stores;
+  }).finally(() => { catalogRequest = null; });
+  return catalogRequest;
+}
+
 async function api(req, res, url) {
   const isRead = req.method === 'GET' && ['/api/catalog','/api/order-updates','/api/profile-photo'].includes(url.pathname);
   if (!isRead) {
@@ -265,8 +277,11 @@ async function api(req, res, url) {
   const cookies = readCookies(req);
   const access = cookies[sessionCookie];
   if (url.pathname === '/api/catalog') {
-    const data = await upstream('/rest/v1/rpc/fd_api', { body: { action: 'catalog', input: {} } });
-    return json(res, 200, data);
+    const stores = await catalogSnapshot();
+    const view = url.searchParams.get('view');
+    if (view === 'page') return json(res,200,catalogPage(stores,url.searchParams));
+    if (view === 'store') return json(res,200,stores.find(store => store.id === url.searchParams.get('id')) ?? null);
+    return json(res,200,stores);
   }
   if (url.pathname === '/api/login' || url.pathname === '/api/signup') {
     const input = await readJson(req);

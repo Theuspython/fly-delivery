@@ -47,6 +47,11 @@ begin
   select x into row_data from jsonb_array_elements(data->'items') x where x->>'id'=coupon::text;
   if row_data->>'unread' is distinct from 'true' or row_data->>'code' is distinct from 'ATIVO20'
     or row_data->'products' is distinct from '["Pizza específica"]'::jsonb then raise exception 'Coupon notice data incorrect';end if;
+  data:=public.fd_api('customer_notifications',jsonb_build_object('store_id',shop));
+  if jsonb_array_length(data->'items')<>1 or data->'items'->0->>'id' is distinct from coupon::text
+    or data->'items'->0->>'unread' is distinct from 'true' then raise exception 'Store menu coupon scope incorrect';end if;
+  if public.fd_api('customer_notifications',jsonb_build_object('store_id',closed_shop))->'items' is distinct from '[]'::jsonb
+    then raise exception 'Closed store coupon exposed in menu';end if;
   perform public.fd_api('customer_read_coupon_notice',jsonb_build_object('coupon_id',coupon,'notice_id',first_notice));
   select x into row_data from jsonb_array_elements(public.fd_api('customer_notifications')->'items') x where x->>'id'=coupon::text;
   if row_data->>'unread' is distinct from 'false' then raise exception 'Read state missing';end if;
