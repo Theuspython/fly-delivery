@@ -11,7 +11,7 @@ let current = null;
 const installer = setupInstall();
 let app;
 let profile;
-let checkedSession = page !== 'cliente';
+let checkedSession = page === 'admin';
 
 $('#manifest').href = '/' + page + '.webmanifest';
 
@@ -21,9 +21,9 @@ function brand() {
 function header() {
   const clientReady = page === 'cliente' && profile;
   const workspace = page === 'cliente' ? '' : '<span class="workspace-label">' + esc(titles[page]) + '</span>';
-  $('#top').innerHTML = '<div class="wrap topbar">' +
+  $('#top').innerHTML = '<div class="wrap topbar' + (page === 'loja' && !current ? ' merchant-guest-topbar' : '') + '">' +
     (clientReady ? '<button class="icon-button customer-menu-button" data-customer-menu aria-label="Abrir menu do cliente" aria-controls="customer-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
-    (page === 'loja' ? '<button class="icon-button merchant-menu-button" data-merchant-menu aria-label="Abrir menu do estabelecimento" aria-controls="merchant-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
+    (page === 'loja' && current?.role === 'merchant' ? '<button class="icon-button merchant-menu-button" data-merchant-menu aria-label="Abrir menu do estabelecimento" aria-controls="merchant-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     (page === 'admin' ? '<button class="icon-button merchant-menu-button" data-admin-menu aria-label="Abrir menu da administração" aria-controls="admin-navigation" aria-expanded="false">' + icon('menu') + '</button>' : '') +
     brand() + workspace + '<nav class="top-actions" aria-label="Menu principal">' +
     (clientReady ? '<a class="icon-button home-button" data-home href="#lojas" aria-label="Voltar à vitrine" title="Início">' + icon('home') + '</a>' :
@@ -78,20 +78,52 @@ const formError = '<p class="form-error" data-form-error role="alert"></p>';
 
 function auth() {
   if (page === 'cliente') return customerAuth('login');
-  const admin = page === 'admin';
-  const loginField = '<label>Login<input name="login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required></label>';
-  const secretField = admin ? '<label>Senha<input name="password" type="password" autocomplete="current-password" required></label>' :
-    passwordInput('current-password');
-  const el = modal(admin ? 'Acesso administrativo' : 'Entre no Fly Delivery',
-    '<form class="form-stack" id="auth-form">' + loginField + secretField + formError +
-    '<button class="btn primary wide" type="submit">Entrar</button></form>',
-    admin ? 'Use o login e a senha configurados no Railway.' : 'Use o login e a senha fornecidos pela administração.');
-  bindSubmit($('#auth-form',el), async fields => {
+  if (page === 'loja') {
+    if (!checkedSession) return;
+    if ($('#dialog').open) $('#dialog').close();
+    if (!$('#merchant-login-form')) merchantAuth();
+    $('#merchant-login').focus();
+    return;
+  }
+  const el = modal('Acesso administrativo',
+    '<form class="form-stack" id="auth-form"><label>Login<input name="login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required></label>' +
+    '<label>Senha<input name="password" type="password" autocomplete="current-password" required></label>' + formError +
+    '<button class="btn primary wide" type="submit">Entrar</button></form>', 'Use o login e a senha configurados no Railway.');
+  bindOperatorLogin($('#auth-form',el),el);
+}
+
+function bindOperatorLogin(form,dialog) {
+  bindSubmit(form, async fields => {
     await api('login',Object.fromEntries(fields));
     await loadSession();
-    el.close();
+    dialog?.close();
     renderApp();
   });
+}
+
+function merchantAuth() {
+  main.innerHTML = '<div class="wrap merchant-auth"><div class="auth-visual merchant-auth-visual">' +
+    '<span class="hero-kicker"><span></span> FLY DELIVERY PARA LOJAS</span>' +
+    '<p class="merchant-auth-title">Sua loja no<br> Fly Delivery.</p>' +
+    '<p>Acompanhe pedidos, atualize seu cardápio e consulte suas vendas.</p></div>' +
+    '<section class="panel auth-panel merchant-auth-panel" aria-labelledby="merchant-auth-title">' +
+    '<span class="merchant-auth-mark" aria-hidden="true">' + icon('store') + '</span>' +
+    '<span class="overline accent">ÁREA DO ESTABELECIMENTO</span><h1 id="merchant-auth-title">Entre na sua loja</h1>' +
+    '<p class="muted">Use o login e a senha fornecidos pela administração.</p>' +
+    '<form class="form-stack" id="merchant-login-form">' +
+    '<label for="merchant-login">Login<input id="merchant-login" name="login" type="text" placeholder="Digite seu login" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required></label>' +
+    '<div class="merchant-auth-password"><label for="merchant-password">Senha</label><div>' +
+    '<input id="merchant-password" name="password" type="password" placeholder="Digite sua senha" autocomplete="current-password" minlength="8" maxlength="128" required>' +
+    '<button type="button" class="text-button" data-password-toggle aria-controls="merchant-password">Mostrar<span class="sr-only"> senha</span></button></div></div>' +
+    formError + '<button class="btn primary wide" type="submit">Acessar minha loja ' + icon('arrow') + '</button></form></section></div>';
+  const password = $('#merchant-password');
+  const toggle = $('[data-password-toggle]');
+  toggle.onclick = () => {
+    const reveal = password.type === 'password';
+    password.type = reveal ? 'text' : 'password';
+    toggle.firstChild.textContent = reveal ? 'Ocultar' : 'Mostrar';
+  };
+  bindOperatorLogin($('#merchant-login-form'));
 }
 
 function customerAuth(mode = 'signup') {
@@ -130,6 +162,13 @@ async function loadSession() {
 }
 
 function renderApp() {
+  if (page === 'loja' && !current) {
+    app.closeMenu();
+    header();
+    if (checkedSession) merchantAuth();
+    else main.innerHTML = '<div class="wrap page"><p class="muted" role="status">Verificando sua sessão…</p></div>';
+    return;
+  }
   if (page === 'cliente' && !profile) {
     app?.stop();
     app = null;
@@ -257,7 +296,11 @@ try {
   renderApp();
 }
 
-window.addEventListener('hashchange', () => { app?.closeMenu?.(); app?.render(); openActivation(); });
+window.addEventListener('hashchange', () => {
+  app?.closeMenu?.();
+  if (page !== 'loja' || current) app?.render();
+  openActivation();
+});
 window.addEventListener('offline', () => toast('Você está offline.'));
 main.addEventListener('click', event => {
   if (event.target.closest('[data-signin]')) auth();

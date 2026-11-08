@@ -232,12 +232,15 @@ export function customer(context) {
       storeCategories(store).map(label => '<span>' + esc(label) + '</span>').join('') + '</div>';
   }
 
-  const productCategory = (store,product) => storeCategories(store).includes(product.category) ? product.category : null;
-  const menuChoices = store => [
-    ['Todas','grid'],
-    ...storeCategories(store).map(label => [label,categories.find(([name])=>name===label)?.[1] || 'spark']),
-    ...(store.products.some(product=>!productCategory(store,product)) ? [['uncategorized','spark']] : [])
-  ];
+  const menuCategoryLabel = label => label === 'uncategorized' ? 'Itens sem categoria' : label;
+  function menuChoices(store) {
+    const labels = storeCategories(store);
+    return [
+      ['Todas','grid'],
+      ...labels.map(label => [label,categories.find(([name])=>name===label)?.[1] || 'spark']),
+      ...(store.products.some(product => !labels.includes(product.category)) ? [['uncategorized','spark']] : [])
+    ];
+  }
 
   function storeCard(store, index, matchingProducts = []) {
     return '<a class="restaurant-card" href="#loja/' + esc(store.id) + '"><div class="restaurant-photo"><img src="' +
@@ -314,8 +317,8 @@ export function customer(context) {
       '<div class="section-head menu-head"><h2>Cardápio</h2><a class="btn outline" href="#carrinho">' + icon('bag') + ' Ver carrinho</a></div>' +
       '<div class="menu-category-bar"><div id="menu-categories" class="chips" aria-label="Filtrar produtos por categoria">' + menuChoices(store).map(([label,symbol]) =>
         '<button class="chip" data-menu-category="' + esc(label) + '" aria-pressed="' + (label===menuCategory) + '">' +
-        icon(symbol) + ' ' + esc(label==='uncategorized' ? 'Itens sem categoria' : label) + '</button>').join('') + '</div></div>' +
-      '<p id="menu-count" class="muted menu-count" aria-live="polite"></p><div class="products" id="menu-products"></div></div>';
+        icon(symbol) + ' ' + esc(menuCategoryLabel(label)) + '</button>').join('') + '</div></div>' +
+      '<p id="menu-count" class="muted menu-count" aria-live="polite"></p><div id="menu-products"></div></div>';
     $('#menu-categories').onclick = event => {
       const button = event.target.closest('[data-menu-category]');
       if (!button) return;
@@ -349,11 +352,26 @@ export function customer(context) {
   }
 
   function menuGrid(store) {
-    const products = store.products.filter(product => menuCategory==='Todas' ||
-      (menuCategory==='uncategorized' ? !productCategory(store,product) : productCategory(store,product)===menuCategory));
-    $('#menu-count').textContent = products.length + (products.length===1 ? ' produto' : ' produtos');
-    $('#menu-products').innerHTML = products.length ? products.map(product =>
-      '<article class="product" data-menu-product="' + esc(product.id) + '"><div class="product-content"><div><h3>' + esc(product.name) + '</h3><p>' + esc(product.description) + '</p><strong>' +
+    const groups = new Map(menuChoices(store).slice(1).map(([label,symbol]) => [label,{ label,symbol,products:[] }]));
+    for (const product of store.products) {
+      const group = groups.get(product.category) ?? groups.get('uncategorized');
+      group.products.push(product);
+    }
+    const showAll = menuCategory === 'Todas';
+    const visible = [...groups.values()].filter(group => group.products.length && (showAll || group.label === menuCategory));
+    const count = visible.reduce((sum,group) => sum + group.products.length,0);
+    $('#menu-count').textContent = count + (count === 1 ? ' produto' : ' produtos');
+    $('#menu-products').innerHTML = visible.length ? visible.map(group => {
+      const headingTag = showAll ? 'h4' : 'h3';
+      const grid = '<div class="products">' + group.products.map(product => menuProductMarkup(product,headingTag)).join('') + '</div>';
+      return showAll ? '<section class="menu-group"><h3>' + icon(group.symbol) + ' ' + esc(menuCategoryLabel(group.label)) + '</h3>' + grid + '</section>' : grid;
+    }).join('') : '<div class="panel menu-empty">' + empty(store.products.length ? 'Nenhum produto nesta categoria' : 'Cardápio em breve',
+      store.products.length ? 'Escolha outra categoria para continuar.' : 'A loja está preparando os primeiros produtos.','store') + '</div>';
+    syncProductQuantities(store);
+  }
+
+  function menuProductMarkup(product,headingTag) {
+    return '<article class="product" data-menu-product="' + esc(product.id) + '"><div class="product-content"><div><' + headingTag + '>' + esc(product.name) + '</' + headingTag + '><p>' + esc(product.description) + '</p><strong>' +
       ((product.sizes ?? []).length ? 'A partir de ' : '') + money(product.price) + '</strong></div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
       '</div>' + ((product.sizes ?? []).length ? '<fieldset class="product-sizes"><legend>Escolha o tamanho</legend><div>' + product.sizes.map(size=>
         '<label><input type="radio" name="size-' + esc(product.id) + '" data-size value="' + esc(size.name) + '"' + (productSize(product)?.name===size.name ? ' checked' : '') + '><span><b>' + esc(size.name) + '</b><small>' + money(size.price) + '</small></span></label>').join('') + '</div></fieldset>' : '') +
@@ -362,10 +380,7 @@ export function customer(context) {
         '</div></details>' : '') + '<p class="configured-price" data-configured-price aria-live="polite"></p><div class="product-quantity"><button class="icon-button" data-product="' + esc(product.id) + '" data-menu-delta="-1" aria-label="Diminuir ' + esc(product.name) + '">' +
       icon('minus') + '</button><span><output aria-label="Quantidade de ' + esc(product.name) + '" data-product-quantity>0</output> no carrinho</span>' +
       '<button class="icon-button add-product" data-product="' + esc(product.id) + '" data-menu-delta="1" aria-label="Adicionar ' + esc(product.name) + '">' +
-      icon('plus') + '</button></div></article>').join('') :
-      '<div class="panel menu-empty">' + empty(store.products.length ? 'Nenhum produto nesta categoria' : 'Cardápio em breve',
-        store.products.length ? 'Escolha outra categoria para continuar.' : 'A loja está preparando os primeiros produtos.','store') + '</div>';
-    syncProductQuantities(store);
+      icon('plus') + '</button></div></article>';
   }
 
   function syncProductQuantities(store) {
