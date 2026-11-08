@@ -12,6 +12,21 @@ function stored(key, fallback) {
 const promotionBanner = rate => rate > 0 ?
   '<aside class="billing-notice"><strong>Dia promocional Fly Delivery</strong> · ' + percentage(rate) +
   ' de desconto em qualquer estabelecimento <span aria-hidden="true">😊</span></aside>' : '';
+const showcaseFilters = [
+  ['coupons','Cupom de desconto','tag'], ['free','Entrega grátis','bike'],
+  ['best-sellers','Mais vendidos','trend'], ['rating','Melhor avaliação','star'], ['all','Sem filtro','grid']
+];
+const ratingNumber = new Intl.NumberFormat('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+
+function storeRating(store) {
+  const average = Number(store.rating_average);
+  if (!store.rating_count || !Number.isFinite(average)) return '';
+  const label = ratingNumber.format(average);
+  const stars = '★★★★★';
+  const fill = Math.min(100,Math.max(0,average * 20));
+  return '<span class="store-rating" role="img" aria-label="' + label + ' de 5 estrelas"><span class="store-rating-stars" aria-hidden="true">' + stars +
+    '<span style="width:' + fill + '%">' + stars + '</span></span><strong aria-hidden="true">' + label + '</strong></span>';
+}
 const unavailableCoupon = error => /^(Cupom inválido ou fora do horário de validade|O cupom não se aplica aos produtos deste carrinho)\./.test(error.message);
 function cashCents(value) {
   const match = /^(\d{1,8})(?:[,.](\d{1,2}))?$/.exec(value.trim());
@@ -42,6 +57,7 @@ export function customer(context) {
   let error;
   let loading;
   let category = 'Todas';
+  let showcaseFilter = 'all';
   let search = '';
   let menuStore = null;
   let menuCategory = 'Todas';
@@ -69,6 +85,7 @@ export function customer(context) {
   let orderStream;
   let previousView;
   let showcasePosition;
+  let pendingRankedProduct;
   let drawer;
   let floatingCart;
   let openOrderId = null;
@@ -118,6 +135,7 @@ export function customer(context) {
     showcasePosition = null;
     category = 'Todas';
     search = '';
+    showcaseFilter = 'all';
     if (route() !== 'lojas') location.hash = 'lojas';
     else {
       render();
@@ -125,9 +143,20 @@ export function customer(context) {
     }
   }
 
-  function showcaseCard(view) {
-    return [...document.querySelectorAll('#results .restaurant-card')].find(card => card.hash === '#' + view);
+  function showcaseCard(view,productId) {
+    return [...document.querySelectorAll('#results .restaurant-card')].find(card => card.hash === '#' + view && card.dataset.rankedProduct === productId);
   }
+
+  function closeShowcaseFilter(event) {
+    const dropdown = $('#showcase-filters[open]');
+    if (!dropdown) return;
+    if (event.type === 'keydown' && event.key === 'Escape') {
+      dropdown.open = false;
+      $('summary',dropdown).focus();
+    } else if (event.type === 'click' && !dropdown.contains(event.target)) dropdown.open = false;
+  }
+  document.addEventListener('click',closeShowcaseFilter);
+  document.addEventListener('keydown',closeShowcaseFilter);
 
   function updateHeader() {
     measureHeader();
@@ -271,6 +300,8 @@ export function customer(context) {
     return '<a class="restaurant-card" href="#loja/' + esc(store.id) + '"><div class="restaurant-photo"><img src="' +
       esc(storePhoto(store)) + '" alt="" loading="' + (index === 0 ? 'eager' : 'lazy') +
       '"><span class="' + (store.is_open ? 'open-tag' : 'closed-tag') + '">' + (store.is_open ? 'Aberto' : 'Fechado') + '</span>' +
+      (store.coupon_bps > 0 ? '<span class="store-coupon-tag" aria-label="Cupom de ' + percentage(store.coupon_bps) + '">' + percentage(store.coupon_bps) + '</span>' : '') +
+      storeRating(store) +
       '</div><div class="restaurant-content">' + categoryTags(store) + '<div class="restaurant-heading"><h3>' + esc(store.name) + '</h3><span class="restaurant-arrow">' + icon('arrow') +
       '</span></div><p>' + esc(store.description) + '</p>' + (matchingProducts.length ? '<p class="search-matches">No cardápio: ' +
       matchingProducts.slice(0,2).map(product=>esc(product.name)).join(' · ') + (matchingProducts.length>2 ? '…' : '') + '</p>' : '') +
@@ -278,18 +309,39 @@ export function customer(context) {
       ' min</span><span>' + icon('bike') + ' ' + (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></a>';
   }
 
+  function bestSellers() {
+    return stores.flatMap(store => store.products.filter(product => product.sales_rank > 0).map(product => ({store,product})))
+      .filter(({store,product}) => searchCatalog([{...store,categories:product.category ? [product.category] : storeCategories(store),products:[product]}],category,search).length)
+      .sort((a,b) => a.product.sales_rank - b.product.sales_rank);
+  }
+
+  function rankedProductCard({store,product}) {
+    return '<a class="restaurant-card ranked-product" href="#loja/' + esc(store.id) + '" data-ranked-product="' + esc(product.id) +
+      '"><div class="restaurant-photo"><img src="' + esc(imageFor(store,product)) + '" alt="" loading="lazy">' +
+      '<span class="product-rank">#' + esc(product.sales_rank) + '</span><span class="' + (store.is_open ? 'open-tag' : 'closed-tag') + '">' +
+      (store.is_open ? 'Aberto' : 'Fechado') + '</span></div><div class="restaurant-content"><div class="restaurant-heading"><h3>' + esc(product.name) +
+      '</h3></div><p>' + esc(store.name) + '</p><strong>' + (product.sizes?.length ? 'A partir de ' : '') + money(product.price) + '</strong></div></a>';
+  }
+
   function catalogGrid() {
     const results = $('#results');
     const count = $('#results-count');
     if (!results) return;
-    const matches = searchCatalog(stores,category,search);
-    count.textContent = loaded ? matches.length + (matches.length === 1 ? ' estabelecimento' : ' estabelecimentos') : '';
+    const ranked = showcaseFilter === 'best-sellers';
+    let matches = ranked ? bestSellers() : searchCatalog(stores,category,search);
+    if (showcaseFilter === 'coupons') matches = matches.filter(({store}) => store.coupon_bps > 0).sort((a,b) => b.store.coupon_bps - a.store.coupon_bps);
+    if (showcaseFilter === 'free') matches = matches.filter(({store}) => store.fee === 0);
+    if (showcaseFilter === 'rating') matches = matches.filter(({store}) => store.rating_count > 0)
+      .sort((a,b) => b.store.rating_average - a.store.rating_average || b.store.rating_count - a.store.rating_count);
+    $('#catalog-title').textContent = ranked ? 'Itens mais vendidos' : 'Estabelecimentos';
+    const unit = ranked ? ['item','itens'] : ['estabelecimento','estabelecimentos'];
+    count.textContent = loaded ? matches.length + ' ' + unit[Number(matches.length !== 1)] : '';
     if (error) {
       results.innerHTML = empty('Catálogo indisponível', error, 'store') + '<button class="btn outline" id="retry">Tentar novamente</button>';
       $('#retry').onclick = async () => { await loadCatalog(); render(); };
     } else if (!loaded) results.innerHTML = '<p class="muted">Carregando estabelecimentos…</p>';
-    else if (!matches.length) results.innerHTML = stores.length ? empty('Nenhum resultado','Experimente outro termo ou categoria.','search') : empty('Estabelecimentos em breve','As lojas cadastradas aparecerão aqui assim que forem publicadas.','store');
-    else results.innerHTML = '<div class="restaurants">' + matches.map((match,index)=>storeCard(match.store,index,match.products)).join('') + '</div>';
+    else if (!matches.length) results.innerHTML = stores.length ? empty('Nenhum resultado','Experimente outro termo, categoria ou filtro.','search') : empty('Estabelecimentos em breve','As lojas cadastradas aparecerão aqui assim que forem publicadas.','store');
+    else results.innerHTML = '<div class="restaurants">' + (ranked ? matches.map(rankedProductCard) : matches.map((match,index)=>storeCard(match.store,index,match.products))).join('') + '</div>';
   }
 
   function home() {
@@ -299,8 +351,11 @@ export function customer(context) {
       '<a class="btn hero-cta" href="#lojas">Explorar estabelecimentos ' + icon('arrow') + '</a></div>' +
       '<div class="hero-stamp" aria-hidden="true">' + icon('bike') + '<span>DEU FOME?<br><strong>VAI DE FLY.</strong></span></div></section>' +
       '<section class="browse" aria-labelledby="categories-title"><div class="section-head"><div><span class="overline accent">BATEU AQUELA VONTADE?</span>' +
-      '<h2 id="categories-title">O que vamos comer?</h2></div><label class="search-field">' + icon('search') +
-      '<input id="search" type="search" maxlength="100" value="' + esc(search) + '" placeholder="Busque loja ou prato" aria-label="Busque loja ou prato"></label></div>' +
+      '<h2 id="categories-title">O que vamos comer?</h2></div></div><div class="showcase-tools"><label class="search-field">' + icon('search') +
+      '<input id="search" type="search" maxlength="100" value="' + esc(search) + '" placeholder="Busque loja ou prato" aria-label="Busque loja ou prato"></label>' +
+      '<details id="showcase-filters" class="showcase-filters"><summary class="btn outline">' + icon('filter') + ' Filtro' + icon('chevron') + '</summary>' +
+      '<div class="showcase-filter-options" role="group" aria-label="Filtros da vitrine">' + showcaseFilters.map(([key,label,symbol]) =>
+        '<button type="button" data-showcase-filter="' + key + '" aria-pressed="' + (key === showcaseFilter) + '">' + icon(symbol) + ' ' + label + '</button>').join('') + '</div></details></div>' +
       '</section><div class="menu-category-bar showcase-category-bar"><div id="categories" class="chips" aria-label="Filtrar categoria">' + categories.map(([label, symbol]) =>
         '<button class="chip" data-category="' + esc(label) + '" aria-pressed="' + (label === category) + '">' + icon(symbol) + ' ' +
         esc(label) + '</button>').join('') + '</div></div>' +
@@ -314,6 +369,26 @@ export function customer(context) {
       $('.catalog').scrollIntoView({ behavior:'smooth' });
     };
     $('#search').oninput = event => { search = event.target.value; catalogGrid(); };
+    const filters = $('#showcase-filters');
+    const filterSummary = $('summary',filters);
+    const markFilter = () => filterSummary.classList.toggle('filter-active',showcaseFilter !== 'all');
+    markFilter();
+    filters.onclick = event => {
+      const button = event.target.closest('[data-showcase-filter]');
+      if (!button) return;
+      showcaseFilter = button.dataset.showcaseFilter;
+      for (const choice of filters.querySelectorAll('button')) choice.setAttribute('aria-pressed',String(choice === button));
+      markFilter();
+      filters.open = false;
+      filterSummary.focus();
+      catalogGrid();
+    };
+    $('#results').onclick = event => {
+      const product = event.target.closest('[data-ranked-product]');
+      if (product && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+        pendingRankedProduct = {view:product.hash.slice(1),id:product.dataset.rankedProduct};
+      }
+    };
     $('#categories').onclick = event => {
       const button = event.target.closest('[data-category]');
       if (!button) return;
@@ -794,7 +869,11 @@ export function customer(context) {
     function draw() {
       if (openOrderId && !orders.some(order=>order.id===openOrderId)) openOrderId=null;
       resizeHistory();
-      const markup = orders.map(order=>orderCard(order,'',{address:true,timeline:true,progress:true,compact:true,customerView:true,expanded:order.id===openOrderId})).join('');
+      const markup = orders.map(order => {
+        const ratingAction = order.status === 'delivered' ? '<button class="btn outline" data-rate-order="' + esc(order.id) + '">' + icon('star') +
+          (order.rating ? ' Sua avaliação · ' + order.rating + '/5' : ' Avaliar estabelecimento') + '</button>' : '';
+        return orderCard(order,ratingAction,{address:true,timeline:true,progress:true,compact:true,customerView:true,expanded:order.id===openOrderId});
+      }).join('');
       renderLiveMarkup(grid,markup);
       $('.history-count').textContent = orders.length ? orders.length+' de '+count+' pedidos' : '';
       message.textContent = count ? (page+1<pages ? 'Role para carregar os próximos pedidos.' : 'Você chegou ao fim do histórico.') : 'Nenhum pedido no histórico. Pedidos entregues ou cancelados aparecerão aqui.';
@@ -814,12 +893,17 @@ export function customer(context) {
         if (!connected()) return;
         const signature=JSON.stringify({orders:data.orders,count:data.count});
         if (!append && firstSignature===signature) return;
-        const reset=!append && firstSignature!==undefined;
+        const sameFirstPage = !append && page >= 0 && data.count === count && data.orders.every((order,index) => order.id === orders[index]?.id);
+        const reset=!append && firstSignature!==undefined && !sameFirstPage;
         if (append) {
           const seen=new Set(orders.map(order=>order.id));
           orders.push(...data.orders.filter(order=>!seen.has(order.id)));
-        } else { orders=data.orders; firstSignature=signature; }
-        page=data.page; pages=data.pages; count=data.count;
+        } else {
+          orders = sameFirstPage ? [...data.orders,...orders.slice(data.orders.length)] : data.orders;
+          firstSignature=signature;
+        }
+        if (!sameFirstPage) page=data.page;
+        pages=data.pages; count=data.count;
         draw();
         if (reset) list.scrollTop=0;
       } catch(error) {
@@ -834,7 +918,40 @@ export function customer(context) {
       if (list.scrollTop>0 && list.scrollTop+list.clientHeight>=list.scrollHeight-64) load(true);
     },{passive:true});
     more.onclick=()=>load(page>=0);
+    function openRating(order) {
+      const labels = ['1 estrela','2 estrelas','3 estrelas','4 estrelas','5 estrelas'];
+      const el = modal('Avaliar estabelecimento','<form class="form-stack" id="order-rating-form">' +
+        '<fieldset class="order-rating-stars"><legend>Quantas estrelas você dá para esta loja?</legend><div>' + labels.map((label,index) =>
+          '<label><input class="sr-only" type="radio" name="rating" value="' + (index+1) + '" aria-label="' + label + '" required' +
+          (order.rating === index+1 ? ' checked' : '') + '>' + icon('star') + '</label>').join('') +
+        '</div></fieldset><p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">Salvar avaliação</button></form>',order.store);
+      const form = $('#order-rating-form',el);
+      const stars = [...form.querySelectorAll('[name=rating]')];
+      const paint = () => {
+        const selected = Number(stars.find(input => input.checked)?.value);
+        for (const input of stars) input.parentElement.classList.toggle('star-selected',Number(input.value) <= selected);
+      };
+      form.onchange = paint;
+      paint();
+      bindSubmit(form,async fields => {
+        const {rating} = await command('customer_rate_order',{ id:order.id,rating:Number(fields.get('rating')) });
+        if (form.isConnected && el.open) el.close();
+        if (connected()) {
+          const saved = orders.find(item => item.id === order.id);
+          if (saved) saved.rating = rating;
+          draw();
+          load();
+        }
+        toast('Avaliação salva. Obrigado!');
+      });
+    }
     grid.addEventListener('click',event=>{
+      const rate = event.target.closest('[data-rate-order]');
+      if (rate) {
+        const order = orders.find(item => item.id === rate.dataset.rateOrder);
+        if (order?.status === 'delivered') openRating(order);
+        return;
+      }
       const button=event.target.closest('[data-toggle-order]');
       if (!button) return;
       openOrderId=openOrderId===button.dataset.toggleOrder?null:button.dataset.toggleOrder;
@@ -871,11 +988,14 @@ export function customer(context) {
     stopHistory?.(); stopHistory=null;
     const view = route();
     const changedView = view !== previousView;
+    const rankedProduct = pendingRankedProduct?.view === view ? pendingRankedProduct.id : undefined;
     if (changedView) {
       openOrderId = null;
       if (isShowcase(previousView) && view.startsWith('loja/')) {
-        showcasePosition = { view,top:window.scrollY,cardTop:showcaseCard(view)?.getBoundingClientRect().top };
+        showcasePosition = { view,productId:rankedProduct,top:window.scrollY,cardTop:showcaseCard(view,rankedProduct)?.getBoundingClientRect().top };
       }
+      pendingRankedProduct = null;
+      if (rankedProduct) menuCategory = 'Todas';
     }
     if (view === 'pedidos') orderView();
     else if (view === 'historico') orderHistoryView();
@@ -895,7 +1015,7 @@ export function customer(context) {
       showcasePosition = null;
       requestAnimationFrame(() => {
         if (!active || route() !== view) return;
-        const card = showcaseCard(position.view);
+        const card = showcaseCard(position.view,position.productId);
         const top = card && Number.isFinite(position.cardTop)
           ? window.scrollY + card.getBoundingClientRect().top - position.cardTop : position.top;
         window.scrollTo({ top,behavior:'instant' });
@@ -904,7 +1024,17 @@ export function customer(context) {
       requestAnimationFrame(() => {
         if (active && route() === view) $('.catalog')?.scrollIntoView({ behavior:'smooth' });
       });
-    } else window.scrollTo(0,0);
+    } else {
+      window.scrollTo(0,0);
+      if (rankedProduct) requestAnimationFrame(() => {
+        if (!active || route() !== view) return;
+        const product = [...document.querySelectorAll('[data-menu-product]')].find(card => card.dataset.menuProduct === rankedProduct);
+        if (!product) return;
+        product.tabIndex = -1;
+        product.focus({preventScroll:true});
+        product.scrollIntoView({block:'start'});
+      });
+    }
   }
 
   loadCatalog().then(() => render());
@@ -939,6 +1069,8 @@ export function customer(context) {
     window.removeEventListener('resize',resizeCategories);
     window.removeEventListener('hashchange',refreshCatalog);
     window.removeEventListener('focus',refreshCatalog);
+    document.removeEventListener('click',closeShowcaseFilter);
+    document.removeEventListener('keydown',closeShowcaseFilter);
   }
   return { render, stop, updateHeader, openMenu, closeMenu, goHome };
 }
