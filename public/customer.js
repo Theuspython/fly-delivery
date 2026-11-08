@@ -16,6 +16,7 @@ const showcaseFilters = [
   ['coupons','Cupom de desconto','tag'], ['free','Entrega grátis','bike'],
   ['best-sellers','Mais vendidos','trend'], ['rating','Melhor avaliação','star'], ['all','Sem filtro','grid']
 ];
+const showcaseBatchSize = 15;
 const ratingNumber = new Intl.NumberFormat('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
 
 function storeRating(store) {
@@ -55,6 +56,7 @@ export function customer(context) {
   let loading;
   let category = 'Todas';
   let showcaseFilter = 'all';
+  let visibleResults = showcaseBatchSize;
   let search = '';
   let menuStore = null;
   let menuCategory = 'Todas';
@@ -82,7 +84,7 @@ export function customer(context) {
   let orderStream;
   let previousView;
   let showcasePosition;
-  let pendingRankedProduct;
+  let pendingShowcaseProduct;
   let drawer;
   let floatingCart;
   let openOrderId = null;
@@ -133,6 +135,7 @@ export function customer(context) {
     category = 'Todas';
     search = '';
     showcaseFilter = 'all';
+    visibleResults = showcaseBatchSize;
     if (route() !== 'lojas') location.hash = 'lojas';
     else {
       render();
@@ -141,7 +144,7 @@ export function customer(context) {
   }
 
   function showcaseCard(view,productId) {
-    return [...document.querySelectorAll('#results .restaurant-card')].find(card => card.hash === '#' + view && card.dataset.rankedProduct === productId);
+    return [...document.querySelectorAll('#results .restaurant-card')].find(card => card.hash === '#' + view && card.dataset.showcaseProduct === productId);
   }
 
   function closeShowcaseFilter(event) {
@@ -293,31 +296,35 @@ export function customer(context) {
     ];
   }
 
-  function storeCard(store, index, matchingProducts = []) {
+  function storeCard(store, index) {
     return '<a class="restaurant-card" href="#loja/' + esc(store.id) + '"><div class="restaurant-photo"><img src="' +
       esc(storePhoto(store)) + '" alt="" loading="' + (index === 0 ? 'eager' : 'lazy') +
       '"><span class="' + (store.is_open ? 'open-tag' : 'closed-tag') + '">' + (store.is_open ? 'Aberto' : 'Fechado') + '</span>' +
       (store.coupon_bps > 0 ? '<span class="store-coupon-tag" aria-label="Cupom de ' + percentage(store.coupon_bps) + '">' + percentage(store.coupon_bps) + '</span>' : '') +
       storeRating(store) +
       '</div><div class="restaurant-content">' + categoryTags(store) + '<div class="restaurant-heading"><h3>' + esc(store.name) + '</h3><span class="restaurant-arrow">' + icon('arrow') +
-      '</span></div><p>' + esc(store.description) + '</p>' + (matchingProducts.length ? '<p class="search-matches">No cardápio: ' +
-      matchingProducts.slice(0,2).map(product=>esc(product.name)).join(' · ') + (matchingProducts.length>2 ? '…' : '') + '</p>' : '') +
+      '</span></div><p>' + esc(store.description) + '</p>' +
       '<div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta +
       ' min</span><span>' + icon('bike') + ' ' + (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></a>';
   }
 
   function bestSellers() {
     return stores.flatMap(store => store.products.filter(product => product.sales_rank > 0).map(product => ({store,product})))
-      .filter(({store,product}) => searchCatalog([{...store,categories:product.category ? [product.category] : storeCategories(store),products:[product]}],category,search).length)
+      .filter(({store,product}) => searchCatalog([{...store,categories:product.category ? [product.category] : storeCategories(store),products:[product]}],category,search).results.length)
       .sort((a,b) => a.product.sales_rank - b.product.sales_rank);
   }
 
-  function rankedProductCard({store,product}) {
-    return '<a class="restaurant-card ranked-product" href="#loja/' + esc(store.id) + '" data-ranked-product="' + esc(product.id) +
+  function showcaseProductCard({store,product},ranked) {
+    return '<a class="restaurant-card showcase-product" href="#loja/' + esc(store.id) + '" data-showcase-product="' + esc(product.id) +
       '"><div class="restaurant-photo"><img src="' + esc(imageFor(store,product)) + '" alt="" loading="lazy">' +
-      '<span class="product-rank">#' + esc(product.sales_rank) + '</span><span class="' + (store.is_open ? 'open-tag' : 'closed-tag') + '">' +
+      (ranked ? '<span class="product-rank">#' + esc(product.sales_rank) + '</span>' : '') + '<span class="' + (store.is_open ? 'open-tag' : 'closed-tag') + '">' +
       (store.is_open ? 'Aberto' : 'Fechado') + '</span></div><div class="restaurant-content"><div class="restaurant-heading"><h3>' + esc(product.name) +
       '</h3></div><p>' + esc(store.name) + '</p><strong>' + (product.sizes?.length ? 'A partir de ' : '') + money(product.price) + '</strong></div></a>';
+  }
+
+  function resetCatalogResults() {
+    visibleResults = showcaseBatchSize;
+    catalogGrid();
   }
 
   function catalogGrid() {
@@ -325,20 +332,41 @@ export function customer(context) {
     const count = $('#results-count');
     if (!results) return;
     const ranked = showcaseFilter === 'best-sellers';
-    let matches = ranked ? bestSellers() : searchCatalog(stores,category,search);
-    if (showcaseFilter === 'coupons') matches = matches.filter(({store}) => store.coupon_bps > 0).sort((a,b) => b.store.coupon_bps - a.store.coupon_bps);
-    if (showcaseFilter === 'free') matches = matches.filter(({store}) => store.fee === 0);
-    if (showcaseFilter === 'rating') matches = matches.filter(({store}) => store.rating_count > 0)
-      .sort((a,b) => b.store.rating_average - a.store.rating_average || b.store.rating_count - a.store.rating_count);
-    $('#catalog-title').textContent = ranked ? 'Itens mais vendidos' : 'Estabelecimentos';
-    const unit = ranked ? ['item','itens'] : ['estabelecimento','estabelecimentos'];
-    count.textContent = loaded ? matches.length + ' ' + unit[Number(matches.length !== 1)] : '';
+    let candidates = stores;
+    if (showcaseFilter === 'coupons') candidates = stores.filter(store => store.coupon_bps > 0);
+    if (showcaseFilter === 'free') candidates = stores.filter(store => store.fee === 0);
+    if (showcaseFilter === 'rating') candidates = stores.filter(store => store.rating_count > 0);
+    const {type,results:matches} = ranked ? {type:'products',results:bestSellers()} : searchCatalog(candidates,category,search);
+    if (showcaseFilter === 'coupons') matches.sort((a,b) => b.store.coupon_bps - a.store.coupon_bps);
+    if (showcaseFilter === 'rating') matches.sort((a,b) => b.store.rating_average - a.store.rating_average || b.store.rating_count - a.store.rating_count);
+    const products = type === 'products';
+    $('#catalog-title').textContent = ranked ? 'Itens mais vendidos' : products ? 'Itens encontrados' : 'Estabelecimentos';
+    const unit = products ? ['item','itens'] : ['estabelecimento','estabelecimentos'];
+    const updateCount = () => {
+      const visible = Math.min(visibleResults,matches.length);
+      count.textContent = loaded ? (visible < matches.length ? visible + ' de ' : '') + matches.length + ' ' + unit[Number(matches.length !== 1)] : '';
+    };
+    updateCount();
     if (error) {
       results.innerHTML = empty('Catálogo indisponível', error, 'store') + '<button class="btn outline" id="retry">Tentar novamente</button>';
       $('#retry').onclick = async () => { await loadCatalog(); render(); };
     } else if (!loaded) results.innerHTML = '<p class="muted">Carregando estabelecimentos…</p>';
     else if (!matches.length) results.innerHTML = stores.length ? empty('Nenhum resultado','Experimente outro termo, categoria ou filtro.','search') : empty('Estabelecimentos em breve','As lojas cadastradas aparecerão aqui assim que forem publicadas.','store');
-    else results.innerHTML = '<div class="restaurants">' + (ranked ? matches.map(rankedProductCard) : matches.map((match,index)=>storeCard(match.store,index,match.products))).join('') + '</div>';
+    else {
+      const cards = (start,end) => matches.slice(start,end).map((match,index) => products ? showcaseProductCard(match,ranked) : storeCard(match.store,start+index)).join('');
+      results.innerHTML = '<div class="restaurants">' + cards(0,visibleResults) + '</div>' +
+        (matches.length > visibleResults ? '<div class="catalog-more"><button type="button" class="btn outline" data-catalog-more>Ver mais ' + icon('chevron') + '</button></div>' : '');
+      const more = $('[data-catalog-more]',results);
+      if (more) more.onclick = () => {
+        const start = visibleResults;
+        visibleResults += showcaseBatchSize;
+        const grid = $('.restaurants',results);
+        grid.insertAdjacentHTML('beforeend',cards(start,visibleResults));
+        updateCount();
+        grid.children[start]?.focus({preventScroll:true});
+        if (visibleResults >= matches.length) more.parentElement.remove();
+      };
+    }
   }
 
   function home() {
@@ -357,7 +385,7 @@ export function customer(context) {
         '<button class="chip" data-category="' + esc(label) + '" aria-pressed="' + (label === category) + '">' + icon(symbol) + ' ' +
         esc(label) + '</button>').join('') + '</div></div>' +
       '<section id="restaurants" class="catalog" aria-labelledby="catalog-title"><div class="section-head"><div><span class="overline accent">VITRINE FLY</span>' +
-      '<h2 id="catalog-title">Estabelecimentos</h2></div><span class="muted" id="results-count"></span></div>' +
+      '<h2 id="catalog-title">Estabelecimentos</h2></div><span class="muted" id="results-count" aria-live="polite"></span></div>' +
       promotionBanner(stores.find(store => store.promotion_bps > 0)?.promotion_bps) +
       '<div id="results"></div></section></div>';
     $('.hero-cta').onclick = event => {
@@ -365,7 +393,7 @@ export function customer(context) {
       event.preventDefault();
       $('.catalog').scrollIntoView({ behavior:'smooth' });
     };
-    $('#search').oninput = event => { search = event.target.value; catalogGrid(); };
+    $('#search').oninput = event => { search = event.target.value; resetCatalogResults(); };
     const filters = $('#showcase-filters');
     const filterSummary = $('summary',filters);
     const markFilter = () => filterSummary.classList.toggle('filter-active',showcaseFilter !== 'all');
@@ -378,12 +406,12 @@ export function customer(context) {
       markFilter();
       filters.open = false;
       filterSummary.focus();
-      catalogGrid();
+      resetCatalogResults();
     };
     $('#results').onclick = event => {
-      const product = event.target.closest('[data-ranked-product]');
+      const product = event.target.closest('[data-showcase-product]');
       if (product && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-        pendingRankedProduct = {view:product.hash.slice(1),id:product.dataset.rankedProduct};
+        pendingShowcaseProduct = {view:product.hash.slice(1),id:product.dataset.showcaseProduct};
       }
     };
     $('#categories').onclick = event => {
@@ -392,7 +420,7 @@ export function customer(context) {
       const pastResults = $('#results').getBoundingClientRect().top < $('.showcase-category-bar').getBoundingClientRect().bottom;
       category = button.dataset.category;
       for (const chip of $('#categories').children) chip.setAttribute('aria-pressed', chip === button);
-      catalogGrid();
+      resetCatalogResults();
       alignCategories();
       if (pastResults) $('.catalog').scrollIntoView({ block:'start' });
     };
@@ -985,14 +1013,14 @@ export function customer(context) {
     stopHistory?.(); stopHistory=null;
     const view = route();
     const changedView = view !== previousView;
-    const rankedProduct = pendingRankedProduct?.view === view ? pendingRankedProduct.id : undefined;
+    const selectedProduct = pendingShowcaseProduct?.view === view ? pendingShowcaseProduct.id : undefined;
     if (changedView) {
       openOrderId = null;
       if (isShowcase(previousView) && view.startsWith('loja/')) {
-        showcasePosition = { view,productId:rankedProduct,top:window.scrollY,cardTop:showcaseCard(view,rankedProduct)?.getBoundingClientRect().top };
+        showcasePosition = { view,productId:selectedProduct,top:window.scrollY,cardTop:showcaseCard(view,selectedProduct)?.getBoundingClientRect().top };
       }
-      pendingRankedProduct = null;
-      if (rankedProduct) menuCategory = 'Todas';
+      pendingShowcaseProduct = null;
+      if (selectedProduct) menuCategory = 'Todas';
     }
     if (view === 'pedidos') orderView();
     else if (view === 'historico') orderHistoryView();
@@ -1023,9 +1051,9 @@ export function customer(context) {
       });
     } else {
       window.scrollTo(0,0);
-      if (rankedProduct) requestAnimationFrame(() => {
+      if (selectedProduct) requestAnimationFrame(() => {
         if (!active || route() !== view) return;
-        const product = [...document.querySelectorAll('[data-menu-product]')].find(card => card.dataset.menuProduct === rankedProduct);
+        const product = [...document.querySelectorAll('[data-menu-product]')].find(card => card.dataset.menuProduct === selectedProduct);
         if (!product) return;
         product.tabIndex = -1;
         product.focus({preventScroll:true});

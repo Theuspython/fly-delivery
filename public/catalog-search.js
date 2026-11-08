@@ -23,14 +23,25 @@ function score(text,tokens) {
 }
 export function searchCatalog(stores,category,query) {
   const tokens=words(String(query).slice(0,100));
-  return stores.filter(store=>category==='Todas'||(store.categories??[store.category]).includes(category)).map(store=>{
-    if(!tokens.length)return {store,products:[],score:1};
-    const identity=[store.name,...(store.categories??[store.category])].join(' ');
-    const direct=score(identity,tokens);
-    const products=store.products.map(product=>{
-      const text=product.name+' '+(product.description??'')+' '+(product.options??[]).map(option=>option.name).join(' ');
-      return {product,score:score(text,tokens)||(!direct?score(identity+' '+text,tokens):0)};
-    }).filter(match=>match.score>0).sort((a,b)=>b.score-a.score);
-    return {store,products:products.map(match=>match.product),score:direct?direct+10:Math.max(0,...products.map(match=>match.score))};
-  }).filter(match=>match.score>0).sort((a,b)=>Number(Boolean(b.store.is_open))-Number(Boolean(a.store.is_open))||b.score-a.score);
+  const candidates=stores.filter(store=>category==='Todas'||(store.categories??[store.category]).includes(category));
+  const byAvailabilityAndScore=(a,b)=>Number(Boolean(b.store.is_open))-Number(Boolean(a.store.is_open))||b.score-a.score;
+  const names=candidates.map(store=>({store,score:tokens.length ? score(store.name,tokens) : 1}));
+  const exactScore=tokens.length*4;
+  const exactNames=names.filter(match=>!tokens.length||match.score===exactScore);
+  if (!tokens.length || exactNames.length) return {type:'stores',results:exactNames.sort(byAvailabilityAndScore)};
+
+  const products=[];
+  for (const {store,score:nameScore} of names) {
+    for (const product of store.products) {
+      if (category!=='Todas' && product.category && product.category!==category) continue;
+      const text=[product.name,product.description,...(product.options??[]).map(option=>option.name)].filter(Boolean).join(' ');
+      const itemScore=score(text,tokens)||(!nameScore?score(store.name+' '+text,tokens):0);
+      if (itemScore) products.push({store,product,score:itemScore});
+    }
+  }
+  const exactProducts=products.filter(match=>match.score===exactScore);
+  if (exactProducts.length) return {type:'products',results:exactProducts.sort(byAvailabilityAndScore)};
+  const similarNames=names.filter(match=>match.score>0);
+  if (similarNames.length) return {type:'stores',results:similarNames.sort(byAvailabilityAndScore)};
+  return {type:'products',results:products.sort(byAvailabilityAndScore)};
 }
