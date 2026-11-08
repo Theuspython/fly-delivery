@@ -22,6 +22,18 @@ function cashCents(value) {
 const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
 const storeCategories = store => sortCategories(store.categories ?? [store.category]);
 const storePhoto = store => store.image || imageFor(store,store.products.find(product => product.image));
+const weekdays = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+const hourLabel = time => Number(time.slice(0,2)) + 'h' + (time.slice(3) === '00' ? '' : time.slice(3));
+
+function storeHoursLabel(today) {
+  const day = weekdays[today?.weekday];
+  if (!day) return '';
+  const { opens,closes,overnight_until:overnight } = today;
+  if (opens && opens === closes) return day + ' · 24 horas';
+  const range = opens && closes ? hourLabel(opens) + '–' + hourLabel(closes) + (closes < opens ? ' (dia seguinte)' : '') : '';
+  const carryover = overnight ? 'até ' + hourLabel(overnight) : '';
+  return day + ' · ' + ([carryover,range].filter(Boolean).join(' e ') || 'fechado');
+}
 
 export function customer(context) {
   let stores = [];
@@ -56,11 +68,15 @@ export function customer(context) {
   let ordersTimer;
   let orderStream;
   let previousView;
+  let showcasePosition;
   let drawer;
   let floatingCart;
   let openOrderId = null;
   let stopHistory;
   const route = () => location.hash.slice(1) || 'inicio';
+  const isShowcase = view => view === 'inicio' || view === 'lojas';
+  const nativeScrollRestoration = history.scrollRestoration;
+  if (nativeScrollRestoration) history.scrollRestoration = 'manual';
   const header = $('#top');
   function measureHeader() {
     main.style.setProperty('--customer-header-height', (header?.offsetHeight ?? 0) + 'px');
@@ -95,6 +111,11 @@ export function customer(context) {
 
   function goHome() {
     closeMenu();
+    if (route().startsWith('loja/') && showcasePosition) {
+      location.hash = 'lojas';
+      return;
+    }
+    showcasePosition = null;
     category = 'Todas';
     search = '';
     if (route() !== 'lojas') location.hash = 'lojas';
@@ -102,6 +123,10 @@ export function customer(context) {
       render();
       $('.catalog')?.scrollIntoView({ behavior:'smooth' });
     }
+  }
+
+  function showcaseCard(view) {
+    return [...document.querySelectorAll('#results .restaurant-card')].find(card => card.hash === '#' + view);
   }
 
   function updateHeader() {
@@ -267,7 +292,7 @@ export function customer(context) {
     else results.innerHTML = '<div class="restaurants">' + matches.map((match,index)=>storeCard(match.store,index,match.products)).join('') + '</div>';
   }
 
-  function home(view) {
+  function home() {
     main.innerHTML = '<div class="wrap home"><section class="hero" aria-labelledby="hero-title"><div class="hero-photo"></div>' +
       '<div class="hero-copy"><span class="hero-kicker"><span></span> DELIVERY DO SEU BAIRRO</span>' +
       '<h1 id="hero-title">A fome chama.<br><em>A gente leva.</em></h1><p>Descubra os melhores sabores da sua região e receba seus favoritos onde estiver.</p>' +
@@ -301,17 +326,18 @@ export function customer(context) {
     };
     catalogGrid();
     alignCategories(false);
-    if (view === 'lojas' && previousView !== view) requestAnimationFrame(() => $('.catalog')?.scrollIntoView({ behavior:'smooth' }));
   }
 
   function storeView(store) {
     if (menuStore !== store.id || !menuChoices(store).some(([label])=>label===menuCategory)) menuCategory = 'Todas';
     menuStore = store.id;
+    const hours = storeHoursLabel(store.today_hours);
     main.innerHTML = '<div class="wrap page"><a class="back-link" href="#lojas">' + icon('back') + ' Estabelecimentos</a>' +
       '<section class="store-banner"><img src="' + esc(storePhoto(store)) +
       '" alt=""><div>' + categoryTags(store,true) + '<h1>' + esc(store.name) + '</h1><p>' + esc(store.description) +
       '</p><div class="restaurant-meta"><span>' + icon('clock') + ' ' + store.eta + ' min</span><span>' + icon('bike') + ' ' +
-      (store.fee ? money(store.fee) : 'Entrega grátis') + '</span></div></div></section>' +
+      (store.fee ? money(store.fee) : 'Entrega grátis') + '</span>' +
+      (hours ? '<span class="store-today-hours">' + icon('calendar') + ' ' + esc(hours) + '</span>' : '') + '</div></div></section>' +
       (!store.is_open ? '<p class="pilot-label">Esta loja está fechada.</p>' : '') +
       promotionBanner(store.promotion_bps) +
       '<div class="section-head menu-head"><h2>Cardápio</h2><a class="btn outline" href="#carrinho">' + icon('bag') + ' Ver carrinho</a></div>' +
@@ -844,7 +870,13 @@ export function customer(context) {
     orderStream?.close();
     stopHistory?.(); stopHistory=null;
     const view = route();
-    if (view !== previousView) openOrderId = null;
+    const changedView = view !== previousView;
+    if (changedView) {
+      openOrderId = null;
+      if (isShowcase(previousView) && view.startsWith('loja/')) {
+        showcasePosition = { view,top:window.scrollY,cardTop:showcaseCard(view)?.getBoundingClientRect().top };
+      }
+    }
     if (view === 'pedidos') orderView();
     else if (view === 'historico') orderHistoryView();
     else if (view === 'enderecos') addressView();
@@ -854,10 +886,25 @@ export function customer(context) {
       if (store) storeView(store);
       else main.innerHTML = '<div class="wrap page"><a class="back-link" href="#lojas">' + icon('back') +
         ' Estabelecimentos</a>' + empty('Loja indisponível','Confira as outras lojas da região.','store') + '</div>';
-    } else home(view);
-    if (previousView !== view && view !== 'lojas') window.scrollTo(0,0);
+    } else home();
     previousView = view;
     updateHeader();
+    if (!changedView) return;
+    if (isShowcase(view) && showcasePosition) {
+      const position = showcasePosition;
+      showcasePosition = null;
+      requestAnimationFrame(() => {
+        if (!active || route() !== view) return;
+        const card = showcaseCard(position.view);
+        const top = card && Number.isFinite(position.cardTop)
+          ? window.scrollY + card.getBoundingClientRect().top - position.cardTop : position.top;
+        window.scrollTo({ top,behavior:'instant' });
+      });
+    } else if (view === 'lojas') {
+      requestAnimationFrame(() => {
+        if (active && route() === view) $('.catalog')?.scrollIntoView({ behavior:'smooth' });
+      });
+    } else window.scrollTo(0,0);
   }
 
   loadCatalog().then(() => render());
@@ -877,6 +924,7 @@ export function customer(context) {
   const catalogTimer = setInterval(() => { if (!document.hidden) refreshCatalog(); },10000);
   function stop() {
     active = false;
+    if (nativeScrollRestoration) history.scrollRestoration = nativeScrollRestoration;
     headerObserver?.disconnect();
     main.style.removeProperty('--customer-header-height');
     floatingCart?.remove();floatingCart=null;
