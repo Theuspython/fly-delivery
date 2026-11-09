@@ -501,6 +501,8 @@ p { line-height:1.5 }
 .merchant-table th { color:var(--muted); font-weight:800; }
 .merchant-table th,.merchant-table td { padding:12px 10px; border-bottom:1px solid var(--line); }
 .merchant-table td small { display:block; color:var(--muted); margin-top:4px; }
+.finance-order-discount + .finance-order-discount { margin-top:.55rem; }
+.finance-order-discount strong { color:#277347; }
 .merchant-table tr:last-child td { border-bottom:0; }
 .merchant-pagination { display:flex; align-items:center; justify-content:space-between; gap:9px; padding-top:17px; color:var(--muted); font-size:.84rem; }
 .merchant-profile > img { width:82px; height:82px; object-fit:cover; border:1px solid var(--line); border-radius:15px; margin-bottom:12px; }

@@ -44,6 +44,17 @@ function pagination(data) {
     (data.page+1 >= data.pages ? ' disabled' : '') + '>Próxima</button></nav>';
 }
 
+function financeDiscounts(order) {
+  const discounts = [];
+  if (order.coupon_discount_cents > 0) {
+    const label = order.coupon_source === 'platform' ? 'Cupom Fly Delivery' : 'Cupom da loja';
+    discounts.push([label,order.coupon_discount_cents,order.coupon_code]);
+  }
+  if (order.platform_discount_cents > 0) discounts.push(['Dia promocional Fly Delivery',order.platform_discount_cents]);
+  return discounts.length ? discounts.map(([label,amount,code]) => '<div class="finance-order-discount"><strong>−' + money(amount) +
+    '</strong><small>' + label + (code ? ' · '+esc(code) : '') + '</small></div>').join('') : '—';
+}
+
 function financeMarkup(data) {
   const summary = '<div class="finance-summary">' + [
     ['Pedidos entregues',String(data.count)],
@@ -54,17 +65,18 @@ function financeMarkup(data) {
     ['Líquido após comissão',money(data.net)]
   ].map(([label,value]) => '<article class="panel"><p>' + label + '</p><strong>' + value + '</strong></article>').join('') +
     '</div><p class="muted finance-note">Pedidos entregues entre ' + dateLabel(data.date_from) + ' e ' + dateLabel(data.date_to) +
-    '. Comissão registrada em cada venda, sem incluir a entrega na base de cálculo. O líquido é o total dos pedidos menos a comissão, independentemente do pagamento das faturas.</p>';
+    '. O total já inclui os descontos e a entrega. O líquido é o total menos a comissão registrada na venda, independentemente do pagamento das faturas.</p>';
   if (!data.count) return summary + '<div class="panel">' + empty('Nenhuma venda concluída','As vendas aparecerão após a confirmação da entrega.','grid') + '</div>';
   return summary + '<div class="panel"><h2>Vendas por dia</h2><div class="merchant-table-scroll"><table class="merchant-table">' +
     '<thead><tr><th>Dia</th><th>Pedidos</th><th>Produtos</th><th>Entrega</th><th>Total</th><th>Comissão Fly Delivery</th><th>Líquido</th></tr></thead><tbody>' +
     data.days.map(day => '<tr><td>' + dateLabel(day.day) + '</td><td>' + day.amount + '</td><td>' +
       money(day.products) + '</td><td>' + money(day.delivery) + '</td><td>' + money(day.total) + '</td><td>' + money(day.platform) + '</td><td>' + money(day.net) + '</td></tr>').join('') +
     '</tbody></table></div></div><div class="panel finance-ledger"><h2>Pedidos do período</h2><div class="merchant-table-scroll">' +
-    '<table class="merchant-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Entregue em</th><th>Produtos</th><th>Entrega</th><th>Total</th><th>Comissão Fly Delivery</th><th>Líquido</th></tr></thead><tbody>' +
+    '<table class="merchant-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Entregue em</th><th>Produtos antes dos descontos</th><th>Descontos ao cliente</th><th>Entrega</th><th>Total pago pelo cliente</th><th>Comissão Fly Delivery</th><th>Líquido</th></tr></thead><tbody>' +
     data.orders.map(order => '<tr><td>#' + esc(order.id.slice(0,8)) + '</td><td>' +
-      esc(order.customer_name) + '</td><td>' + timestamp(order.completed_at) + '</td><td>' + money(order.subtotal) +
-      '</td><td>' + money(order.fee) + '</td><td>' + money(order.subtotal+order.fee) + '</td><td>' + money(order.platform) + '</td><td>' + money(order.net) + '</td></tr>').join('') +
+      esc(order.customer_name) + '</td><td>' + timestamp(order.completed_at) + '</td><td>' + money(order.gross_subtotal ?? order.subtotal) +
+      '</td><td>' + financeDiscounts(order) + '</td><td>' + money(order.fee) + '</td><td>' + money(order.subtotal+order.fee) +
+      '</td><td>' + money(order.platform) + '</td><td>' + money(order.net) + '</td></tr>').join('') +
     '</tbody></table></div>' + pagination(data) + '</div>';
 }
 

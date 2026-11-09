@@ -32,7 +32,7 @@ function cookiesFor(req) {
 }
 const limit = 3 * 1024 * 1024;
 const maxImageSourceBytes = 20 * 1024 * 1024;
-const maxImageBytes = 100_000;
+const maxImageBytes = 50_000;
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -74,7 +74,7 @@ async function compactImage(image) {
   if (image.bytes.length <= maxImageBytes) return image;
   try {
     const source = sharp(image.bytes,{limitInputPixels:40_000_000}).autoOrient();
-    for (const [edge,quality] of [[960,82],[960,70],[720,74],[560,70],[400,64],[256,56]]) {
+    for (const [edge,quality] of [[960,80],[800,72],[640,72],[480,70],[360,64],[256,56],[192,50]]) {
       const bytes = await source.clone().resize(edge,edge,{fit:'inside',withoutEnlargement:true})
         .webp({quality}).toBuffer();
       if (bytes.length <= maxImageBytes) return {bytes,type:'image/webp',extension:'webp'};
@@ -82,10 +82,17 @@ async function compactImage(image) {
   } catch {
     throw new HttpError(400,'Não foi possível abrir esta foto. Escolha outra imagem JPG, PNG ou WebP.');
   }
-  throw new HttpError(400,'Não foi possível reduzir esta foto a 100 KB. Escolha outra imagem.');
+  throw new HttpError(400,'Não foi possível reduzir esta foto a 50 KB. Escolha outra imagem.');
 }
 
 const profilePhotoPath = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp)$/;
+
+function menuPhotoKey(url,store) {
+  const prefix = supabase + '/storage/v1/object/public/fly-delivery-menu/';
+  if (typeof url !== 'string' || !url.startsWith(prefix)) return null;
+  const key = url.slice(prefix.length);
+  return profilePhotoPath.test(key) && key.startsWith(store + '/') ? key : null;
+}
 
 async function serveProfilePhoto(req,res,url) {
   if (req.headers['sec-fetch-site'] === 'cross-site') throw new HttpError(403,'Origem da requisição inválida.');
@@ -158,6 +165,20 @@ async function upstream(path, { method = 'POST', token, body, type = 'applicatio
     throw new HttpError(response.status === 403 ? 403 : 502, 'Não foi possível concluir a operação.');
   }
   return data;
+}
+
+async function removePhoto(bucket,key,token) {
+  for (let attempt=0;attempt<2;attempt++) {
+    try {
+      await upstream('/storage/v1/object/'+bucket,{method:'DELETE',token,body:{prefixes:[key]},timeout:4000});
+      return;
+    } catch (error) {
+      if (attempt===1 || (error.status && error.status<500 && error.status!==429)) {
+        console.error('Could not remove a replaced photo',bucket,error.status ?? error.name);
+        return;
+      }
+    }
+  }
 }
 
 const billing = createBilling({rpc:(action,input)=>upstream('/rest/v1/rpc/fd_billing_backend',{
@@ -406,6 +427,12 @@ async function api(req, res, url) {
     }
     const payload = action === 'customer_profile' && ('name' in input || 'phone' in input) ? profileFields(input) : input;
     const data = await upstream('/rest/v1/rpc/fd_api', { token: access, body: { action, input:payload } });
+    if (action==='save_store_profile' || action==='save_product') {
+      const {replaced_photo,...saved} = data;
+      const key = menuPhotoKey(replaced_photo,action==='save_store_profile' ? input.id : input.store_id);
+      if (key) await removePhoto('fly-delivery-menu',key,access);
+      return json(res,200,saved);
+    }
     return json(res, 200, data);
   }
   if (url.pathname === '/api/upload-profile') {
@@ -418,20 +445,18 @@ async function api(req, res, url) {
     const { bytes,type,extension } = await compactImage(image);
     const key = user.id + '/' + crypto.randomUUID() + '.' + extension;
     await upstream('/storage/v1/object/fly-delivery-profiles/' + key,{ token:access,body:bytes,type });
-    const remove = path => upstream('/storage/v1/object/fly-delivery-profiles',{
-      method:'DELETE',token:access,body:{ prefixes:[path] }
-    });
     let updated;
     try {
       updated = await upstream('/rest/v1/rpc/fd_api',{ token:access,body:{ action:'save_customer_photo',input:{ path:key } } });
     } catch (error) {
-      await remove(key).catch(() => {});
+      await removePhoto('fly-delivery-profiles',key,access);
       throw error;
     }
-    if (previous.photo && profilePhotoPath.test(previous.photo) && previous.photo.startsWith(user.id + '/')) {
-      await remove(previous.photo).catch(() => {});
+    const {replaced_photo,...saved} = updated;
+    if (typeof replaced_photo==='string' && profilePhotoPath.test(replaced_photo) && replaced_photo.startsWith(user.id + '/')) {
+      await removePhoto('fly-delivery-profiles',replaced_photo,access);
     }
-    return json(res,201,updated);
+    return json(res,201,saved);
   }
   if (url.pathname === '/api/upload') {
     if (sessionCookie !== 'fd_loja_access' || !access) throw new HttpError(401,'Entre no estabelecimento para enviar a foto.');

@@ -3,7 +3,7 @@ export const main = $('#main');
 export const dialog = $('#dialog');
 export const categories = [
   ['Todas','grid'], ['Hambúrguer','burger'], ['Pizza','pizza'], ['Marmitex','bowl'], ['Porções','bowl'],
-  ['Açaí','cup'], ['Telecerveja','beer'], ['Japonesa','sushi'], ['Bebidas','cup']
+  ['Macarrão','bowl'], ['Açaí','cup'], ['Telecerveja','beer'], ['Japonesa','sushi'], ['Bebidas','cup'], ['Outros','grid']
 ];
 export const sortCategories = values => [...values].sort((a,b) => categories.findIndex(([name])=>name===a)-categories.findIndex(([name])=>name===b));
 export const money = value => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(value / 100);
@@ -17,7 +17,8 @@ export const statuses = {
 export const payments = { pix_delivery:'Pix na entrega', card_delivery:'Cartão na entrega', cash_delivery:'Dinheiro na entrega' };
 export const fallbackImages = {
   Hambúrguer:'/assets/burger.webp', Pizza:'/assets/pizza.webp', Japonesa:'/assets/sushi.webp',
-  Porções:'/assets/bowl.webp', Bebidas:'/assets/icon.svg?v=motoboy', Açaí:'/assets/bowl.webp', Telecerveja:'/assets/icon.svg?v=motoboy', Marmitex:'/assets/bowl.webp'
+  Porções:'/assets/bowl.webp', Bebidas:'/assets/icon.svg?v=motoboy', Açaí:'/assets/bowl.webp', Telecerveja:'/assets/icon.svg?v=motoboy', Marmitex:'/assets/bowl.webp',
+  Macarrão:'/assets/bowl.webp', Outros:'/assets/icon.svg?v=motoboy'
 };
 const icons = {
   pin:'<path d="M20 10c0 5-8 11-8 11s-8-6-8-11a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
@@ -29,6 +30,7 @@ const icons = {
   bag:'<path d="M5 8h14l1 13H4L5 8Z"/><path d="M9 10V6a3 3 0 0 1 6 0v4"/>',
   home:'<path d="m3 10 9-7 9 7v11h-6v-7H9v7H3V10Z"/>',
   person:'<circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/>',
+  camera:'<path d="M8 6 9.5 4h5L16 6h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3.5"/>',
   arrow:'<path d="M4 12h15m-6-6 6 6-6 6"/>',
   back:'<path d="M20 12H5m6-6-6 6 6 6"/>',
   calendar:'<rect x="4" y="6" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v5m8-5v5"/>',

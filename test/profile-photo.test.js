@@ -11,6 +11,7 @@ test('profile images upload privately, keep ownership and use each app session f
   const jpeg=Buffer.from('ffd8ffe000104a4649460001','hex');
   let profile={name:'Cliente Teste',phone:'31999990000',photo:oldPhoto};
   let failSave=false;
+  let replacedMenuPhoto;
   const requests=[];
   const upstream=createServer(async(req,res)=>{
     const chunks=[];for await(const chunk of req)chunks.push(chunk);
@@ -23,7 +24,12 @@ test('profile images upload privately, keep ownership and use each app session f
       if(body.action==='customer_profile')return json(200,profile);
       if(body.action==='save_customer_photo'){
         if(failSave)return json(409,{code:'P0001',message:'FD: Não foi possível salvar a foto.'});
-        profile={...profile,photo:body.input.path};return json(200,profile);
+        const replaced_photo=profile.photo;
+        profile={...profile,photo:body.input.path};return json(200,{...profile,replaced_photo});
+      }
+      if(['save_store_profile','save_product'].includes(body.action)){
+        if(failSave)return json(409,{code:'P0001',message:'FD: Não foi possível salvar a foto.'});
+        return json(200,{id:buyer,replaced_photo:replacedMenuPhoto});
       }
     }
     if(req.url.startsWith('/storage/v1/object/authenticated/')){
@@ -52,6 +58,7 @@ test('profile images upload privately, keep ownership and use each app session f
     const response=await upload();assert.equal(response.status,201);
     const updated=await response.json();
     assert.match(updated.photo,new RegExp('^'+buyer+'/[0-9a-f-]{36}\\.jpg$'));
+    assert.equal('replaced_photo' in updated,false);
     const object=requests.find(x=>x.path.startsWith('/storage/v1/object/fly-delivery-profiles/'));
     assert.deepEqual(object.bytes,jpeg);assert.equal(object.authorization,'Bearer buyer-token');
     assert.deepEqual(requests.find(x=>x.method==='DELETE').body,{prefixes:[oldPhoto]});
@@ -86,11 +93,33 @@ test('profile images upload privately, keep ownership and use each app session f
     const saved=requests.filter(x=>x.method==='POST'&&x.path.endsWith('.webp'));
     assert.equal(saved.length,2);
     for (const object of saved) {
-      assert.ok(object.bytes.length<=100_000);
+      assert.ok(object.bytes.length<=50_000);
       const metadata=await sharp(object.bytes).metadata();
       assert.equal(metadata.format,'webp');
       assert.equal(metadata.hasAlpha,true);
       assert.ok(Math.abs(metadata.width/metadata.height-1.5)<.02);
     }
+
+    const command=(action,input)=>fetch(origin+'/api/command',{method:'POST',
+      headers:{Origin:origin,'Content-Type':'application/json','X-FD-App':'loja',Cookie:'fd_loja_access=merchant-with-order'},
+      body:JSON.stringify({action,input})});
+    const menuPrefix=process.env.SUPABASE_URL+'/storage/v1/object/public/fly-delivery-menu/';
+    for (const [action,input] of [['save_store_profile',{id:buyer}],['save_product',{store_id:buyer}]]) {
+      requests.length=0;
+      replacedMenuPhoto=menuPrefix+oldPhoto;
+      failSave=true;
+      assert.equal((await command(action,input)).status,409);
+      assert.equal(requests.some(x=>x.method==='DELETE'),false);
+      failSave=false;
+      const response=await command(action,input);
+      assert.deepEqual(await response.json(),{id:buyer});
+      assert.deepEqual(requests.at(-1).body,{prefixes:[oldPhoto]});
+      assert.equal(requests.at(-1).path,'/storage/v1/object/fly-delivery-menu');
+      assert.equal(requests.at(-1).authorization,'Bearer merchant-with-order');
+    }
+    requests.length=0;
+    replacedMenuPhoto='https://other-project.supabase.co/storage/v1/object/public/fly-delivery-menu/'+oldPhoto;
+    assert.equal((await command('save_store_profile',{id:buyer})).status,200);
+    assert.equal(requests.some(x=>x.method==='DELETE'),false);
   }finally{await Promise.all([new Promise(r=>app.close(r)),new Promise(r=>upstream.close(r))]);}
 });

@@ -213,23 +213,26 @@ function account() {
   const customerPhoto = page === 'cliente' && profile;
   const el = modal('Minha conta',(customerPhoto ? '<div class="account-profile"><div data-profile-preview>' +
     profileAvatar(profile.photo,name,'cliente',true) + '</div><div><h3>' + esc(name) + '</h3><p class="muted">' +
-    esc(profile.phone) + '</p></div></div><form id="profile-photo-form" class="form-stack"><label>Foto de perfil<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required></label>' +
-    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 100 KB e aparece nos pedidos recebidos pelos estabelecimentos.</p><p class="muted" data-photo-status role="status"></p>' +
-    '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">Salvar foto</button></form>' :
+    esc(profile.phone) + '</p></div></div><form id="profile-photo-form" class="form-stack">' +
+    '<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" hidden><button class="btn outline wide" type="button" data-pick-profile-photo>' +
+    icon('camera') + (profile.photo ? 'Trocar foto de perfil' : 'Adicionar foto de perfil') + '</button>' +
+    '<p class="muted">Sua foto aparece nos pedidos recebidos pelos estabelecimentos.</p><p class="muted" data-photo-status role="status"></p>' +
+    '<p class="form-error" data-form-error role="alert"></p><div data-save-profile-photo hidden><button class="btn primary wide" type="submit" disabled>Salvar foto</button></div></form>' :
     '<p class="dialog-copy">' + esc(name) + '</p>') + '<div class="order-actions">' +
     (canChangePassword ? '<button class="btn primary" data-change-password>Alterar senha</button>' : '') +
     '<button class="btn outline" data-logout>Sair</button></div>');
   if (customerPhoto) {
     const actor = current.id;
     const form = $('#profile-photo-form',el);
-    const input=$('[name=photo]',form),save=$('button[type=submit]',form),error=$('[data-form-error]',form),status=$('[data-photo-status]',form);
+    const input=$('[name=photo]',form),pick=$('[data-pick-profile-photo]',form),save=$('button[type=submit]',form);
+    const saveRow=$('[data-save-profile-photo]',form),error=$('[data-form-error]',form),status=$('[data-photo-status]',form);
     let previewUrl,source,prepared,preparing,revision=0,closed=false;
-    const sizeLabel=bytes=>bytes>=1024*1024?new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(bytes/(1024*1024))+' MB':Math.max(1,Math.round(bytes/1024))+' KB';
+    const sizeLabel=bytes=>bytes>=1000000?new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(bytes/1000000)+' MB':Math.max(1,Math.round(bytes/1000))+' KB';
     el.addEventListener('close',() => { closed=true;revision++;if (previewUrl) URL.revokeObjectURL(previewUrl); },{ once:true });
     function prepare(file) {
       if(source===file&&prepared)return Promise.resolve(prepared);
       if(source===file&&preparing)return preparing;
-      const request=++revision;source=file;prepared=null;save.disabled=true;error.textContent='';status.textContent='Compactando sua foto…';
+      const request=++revision;source=file;prepared=null;save.disabled=true;saveRow.hidden=true;error.textContent='';status.textContent='Compactando sua foto…';
       preparing=compactProfilePhoto(file).then(compact=>{
         if(closed||request!==revision)return compact;
         prepared=compact;
@@ -237,24 +240,26 @@ function account() {
         previewUrl=URL.createObjectURL(compact);
         $('[data-profile-preview]',el).innerHTML='<span class="profile-avatar profile-avatar-large"><img src="'+esc(previewUrl)+'" alt="Prévia da foto compactada"></span>';
         status.textContent='Foto pronta: '+sizeLabel(compact.size)+' (original: '+sizeLabel(file.size)+').';
+        saveRow.hidden=false;
         return compact;
       }).catch(err=>{if(!closed&&request===revision){error.textContent=err.message;status.textContent='';}throw err;})
-        .finally(()=>{if(!closed&&request===revision){preparing=null;save.disabled=false;}});
+        .finally(()=>{if(!closed&&request===revision){preparing=null;save.disabled=!prepared;}});
       return preparing;
     }
-    input.onchange=event=>{prepare(event.target.files[0]).catch(()=>{});};
+    pick.onclick=()=>input.click();
+    input.onchange=event=>{const file=event.target.files[0];if(file)prepare(file).catch(()=>{});};
     bindSubmit(form,async () => {
       const file=input.files[0];validateProfilePhoto(file);
       const compact=await prepare(file);
       if(closed||!form.isConnected||current?.id!==actor)return;
-      input.disabled=true;save.disabled=true;save.textContent='Enviando foto…';
+      pick.disabled=true;input.disabled=true;save.disabled=true;save.textContent='Enviando foto…';
       try {
         const updated=await api('upload-profile',compact);
         if (current?.id !== actor) return;
         profile = updated;
         if (!closed&&form.isConnected&&el.open) account();
         toast('Foto de perfil salva.');
-      } finally {input.disabled=false;save.textContent='Salvar foto';}
+      } finally {pick.disabled=false;input.disabled=false;save.textContent='Salvar foto';}
     });
   }
   if (canChangePassword) $('[data-change-password]',el).onclick = changePassword;

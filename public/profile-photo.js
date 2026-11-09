@@ -1,5 +1,5 @@
 export const maxProfileSourceBytes=20*1024*1024;
-export const maxProfileBytes=100_000;
+export const maxProfileBytes=50_000;
 export function validateProfilePhoto(file) {
   if(!file?.size||!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Escolha uma foto JPG, PNG ou WebP.');
   if(file.size>maxProfileSourceBytes)throw new Error('Escolha uma foto de até 20 MB para compactar.');
@@ -22,7 +22,7 @@ export async function compactProfilePhoto(file) {
     const crop=Math.min(width,height),edge=Math.min(512,crop),context=canvas.getContext('2d');
     if(!context)throw new Error('Não foi possível compactar a foto neste navegador.');
     const encode=quality=>new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Não foi possível compactar a foto.')),'image/jpeg',quality));
-    for(const output of [...new Set([edge,Math.min(edge,384),Math.min(edge,256)])]){
+    for(const output of [...new Set([edge,Math.min(edge,384),Math.min(edge,256),Math.min(edge,192)])]){
       canvas.width=canvas.height=output;
       context.fillStyle='#ffffff';context.fillRect(0,0,output,output);
       context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';

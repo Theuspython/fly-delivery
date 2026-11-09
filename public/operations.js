@@ -104,7 +104,7 @@ export function storeSettings(store,done) {
   const el = modal('Perfil da loja',
     '<form class="form-stack" id="store-form"><div class="store-settings-summary"><section class="panel"><h3>Foto da loja</h3><label>Foto ou logo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
     (image ? '<label class="check"><input name="remove_photo" type="checkbox"> Remover foto atual</label>' : '') +
-    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 100 KB.</p></section>' +
+    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 50 KB.</p></section>' +
     '<section class="panel"><h3>Entrega e publicação</h3><div class="fields-two"><label>Taxa de entrega (R$)<input name="fee" type="number" step="0.01" min="0" max="1000" required value="' +
     store.fee / 100 + '"></label><label>Prazo (min)<input name="eta" type="number" min="5" max="180" required value="' +
     store.eta + '"></label></div><label class="check"><input name="active" type="checkbox"' + (store.active || (!store.weekly_hours && !store.address) ? ' checked' : '') +
@@ -135,7 +135,7 @@ export function storeSettings(store,done) {
     }
     await command('save_store_profile',{ id:store.id,
       fee:Math.round(Number(data.get('fee'))*100),eta:Number(data.get('eta')),
-      active:data.has('active'),image:data.has('remove_photo') && !file?.size ? null : image,
+      active:data.has('active'),...(file?.size ? {image} : data.has('remove_photo') ? {image:null} : {}),
       weekly_hours:weekdays.map((_,index) => data.has('day-' + index) ?
         { open:data.get('open-' + index),close:data.get('close-' + index) } : null)
     });
@@ -168,7 +168,7 @@ export function productForm(store, product, done) {
     '<fieldset class="optional-editor"><legend>Opcionais do produto</legend><label class="check"><input type="checkbox" name="has_options"' +
     ((product?.options ?? []).length ? ' checked' : '') + '> Este produto tem opcionais</label><div data-options-editor><p class="muted">O cliente pode escolher um ou mais adicionais. O valor é somado por unidade do produto.</p><div data-option-rows></div><button type="button" class="btn outline" data-add-option>Adicionar opcional</button></div></fieldset>' +
     (photo ? '<button class="text-button" type="button" data-remove-photo>Remover foto atual</button>' : '') +
-    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 100 KB.</p><label class="check"><input name="active" type="checkbox"' +
+    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 50 KB.</p><label class="check"><input name="active" type="checkbox"' +
     (product?.active !== false ? ' checked' : '') + '> Disponível no cardápio</label>' + formEnd('Salvar produto') + '</form>');
   const sizesEnabled = $('[name=has_sizes]',el);
   const stockEnabled = $('[name=tracks_stock]',el);
@@ -243,7 +243,8 @@ export function productForm(store, product, done) {
       selectedFile = file;
     }
     await command('save_product', { id:product?.id, store_id:store.id, name:data.get('name'), category:data.get('category'), description:data.get('description'),
-      price:sizes.length ? Math.min(...sizes.map(size=>size.price)) : Math.round(Number(data.get('price'))*100), active:data.has('active'), image:photo, options, sizes, meal_choices,...stockChange });
+      price:sizes.length ? Math.min(...sizes.map(size=>size.price)) : Math.round(Number(data.get('price'))*100), active:data.has('active'),
+      ...(file?.size ? {image:photo} : remove?.disabled ? {image:null} : {}), options, sizes, meal_choices,...stockChange });
     el.close();
     toast('Produto salvo.');
     await done();
