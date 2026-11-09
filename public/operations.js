@@ -146,7 +146,7 @@ export function storeSettings(store,done) {
 }
 
 export function productForm(store, product, done) {
-  const allowedCategories = sortCategories(store.categories ?? [store.category]);
+  const allowedCategories = sortCategories([...(store.categories ?? [store.category]),...(store.menu_categories ?? [])]);
   const selectedCategory = allowedCategories.includes(product?.category) ? product.category : allowedCategories.length === 1 ? allowedCategories[0] : '';
   let photo = product?.image;
   let selectedFile;
@@ -155,7 +155,11 @@ export function productForm(store, product, done) {
     '<form class="form-stack" id="product-form"><label>Nome<input name="name" required minlength="2" maxlength="100" value="' +
     esc(product?.name) + '"></label><label>Categoria<select name="category" required><option value="" disabled' + (!selectedCategory ? ' selected' : '') + '>Selecione a categoria</option>' +
     allowedCategories.map(label => '<option value="' + esc(label) + '"' + (selectedCategory===label ? ' selected' : '') + '>' + esc(label) + '</option>').join('') +
-    '</select></label><label>Descrição<textarea name="description" rows="3" maxlength="500">' + esc(product?.description) +
+    '</select></label><button type="button" class="btn outline" data-create-category aria-expanded="false" aria-controls="custom-category-field">' +
+    icon('plus') + ' Criar categoria para esta loja</button><div id="custom-category-field" hidden><label>Nome da nova categoria' +
+    '<input name="new_category" maxlength="40" minlength="2" placeholder="Ex.: Sanduíches" disabled></label>' +
+    '<p class="muted">A categoria fica disponível neste cardápio e nos próximos cadastros da loja.</p></div>' +
+    '<label>Descrição<textarea name="description" rows="3" maxlength="500">' + esc(product?.description) +
     '</textarea></label><label data-base-price>Preço (R$)<input name="price" type="number" min="0.01" max="10000" step="0.01" required value="' +
     (product ? product.price / 100 : '') + '"></label>' +
     '<fieldset class="size-editor"><legend>Estoque</legend><label class="check"><input type="checkbox" name="tracks_stock"' +
@@ -216,12 +220,39 @@ export function productForm(store, product, done) {
   $('[data-add-option]',el).onclick = () => { if (rows.children.length < 20) { optionRow(); rows.lastElementChild.querySelector('input').focus(); } };
   rows.onclick = event => { const remove = event.target.closest('[data-remove-option]'); if (remove) { remove.closest('.optional-editor-row').remove(); $('[data-add-option]',el).disabled = false; } };
   toggleOptions();
-  mealEditor=createMealEditor(el,product,()=>sizesEnabled.checked?[...sizesEditor.querySelectorAll('[data-size-enabled]:checked')].map(input=>input.dataset.sizeEnabled):[''],()=>$('[name=category]',el).value);
-  $('[name=category]',el).onchange=()=>mealEditor.sync();
+  const categorySelect = $('[name=category]',el);
+  const categoryButton = $('[data-create-category]',el);
+  const categoryField = $('#custom-category-field',el);
+  const categoryName = $('[name=new_category]',el);
+  const newCategory = () => categoryName.value.trim().replace(/\s+/g,' ');
+  function productCategory() {
+    if (categoryField.hidden) return categorySelect.value;
+    const name = newCategory();
+    return allowedCategories.find(label=>label.toLocaleLowerCase('pt-BR')===name.toLocaleLowerCase('pt-BR')) ?? name;
+  }
+  mealEditor=createMealEditor(el,product,()=>sizesEnabled.checked?[...sizesEditor.querySelectorAll('[data-size-enabled]:checked')].map(input=>input.dataset.sizeEnabled):[''],productCategory);
+  categorySelect.onchange = categoryName.oninput = () => mealEditor.sync();
+  categoryButton.onclick = () => {
+    const creating = categoryField.hidden;
+    categoryField.hidden = !creating;
+    categorySelect.disabled = creating;
+    categoryName.required = creating;
+    categoryName.disabled = !creating;
+    categoryButton.setAttribute('aria-expanded',String(creating));
+    categoryButton.innerHTML = creating ? 'Usar categoria existente' : icon('plus') + ' Criar categoria para esta loja';
+    mealEditor.sync();
+    (creating ? categoryName : categorySelect).focus();
+  };
   const remove = $('[data-remove-photo]',el);
   if (remove) remove.onclick = () => { photo = null; remove.textContent = 'Foto marcada para remoção'; remove.disabled = true; };
   bindSubmit($('#product-form',el), async data => {
-    if (!allowedCategories.includes(data.get('category'))) throw new Error('Selecione uma das categorias do estabelecimento.');
+    const creatingCategory = !categoryField.hidden;
+    const category = productCategory();
+    if (creatingCategory) {
+      if (category.length<2 || category.length>40 || ['todas','uncategorized'].includes(category.toLowerCase())) {
+        throw new Error('Use de 2 a 40 caracteres e escolha um nome diferente de Todas.');
+      }
+    } else if (!allowedCategories.includes(category)) throw new Error('Selecione uma das categorias do estabelecimento.');
     const sizes = sizesEnabled.checked ? [...sizesEditor.querySelectorAll('[data-size-enabled]:checked')].map(input=>{
       const value=$('[data-size-price="' + input.dataset.sizeEnabled + '"]',el).value;
       return {name:input.dataset.sizeEnabled,price:value.trim() ? Math.round(Number(value)*100) : NaN};
@@ -242,7 +273,8 @@ export function productForm(store, product, done) {
       photo = (await api('upload?store=' + encodeURIComponent(store.id),file)).url;
       selectedFile = file;
     }
-    await command('save_product', { id:product?.id, store_id:store.id, name:data.get('name'), category:data.get('category'), description:data.get('description'),
+    await command('save_product', { id:product?.id, store_id:store.id, name:data.get('name'),
+      ...(creatingCategory ? {new_category:category} : {category}), description:data.get('description'),
       price:sizes.length ? Math.min(...sizes.map(size=>size.price)) : Math.round(Number(data.get('price'))*100), active:data.has('active'),
       ...(file?.size ? {image:photo} : remove?.disabled ? {image:null} : {}), options, sizes, meal_choices,...stockChange });
     el.close();

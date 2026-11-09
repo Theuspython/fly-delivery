@@ -40,6 +40,7 @@ export function catalogPage(stores, params) {
 
 function bestSellers(stores,category,query) {
   return stores.flatMap(store => store.products.filter(product => product.sales_rank>0).map(product => ({store,product})))
-    .filter(({store,product}) => searchCatalog([{...store,categories:product.category ? [product.category] : store.categories ?? [store.category],products:[product]}],category,query).results.length)
+    .filter(({store,product}) => (category==='Todas' || !product.category || product.category===category) &&
+      searchCatalog([{...store,products:[product]}],category,query).results.length)
     .sort((a,b) => a.product.sales_rank-b.product.sales_rank);
 }

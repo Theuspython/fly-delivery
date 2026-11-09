@@ -75,6 +75,7 @@ export function customer(context) {
   let search = '';
   let menuStore = null;
   let menuCategory = 'Todas';
+  let menuScrollFrame = null;
   let menuVisible = showcaseBatchSize;
   let menuFocus;
   const optionDrafts = new Map();
@@ -259,7 +260,7 @@ export function customer(context) {
   }
 
   function alignCategories(smooth = true,list = $('#categories')) {
-    const selected = list?.querySelector('[aria-pressed=true]');
+    const selected = list?.querySelector('[data-menu-active]') ?? list?.querySelector('[aria-pressed=true]');
     if (!selected) return;
     const last = list.querySelector('.chip:last-child');
     list.style.setProperty('--category-tail',Math.max(0,list.clientWidth - last.offsetWidth - 15) + 'px');
@@ -267,8 +268,41 @@ export function customer(context) {
     list.scrollTo({ left:selected === list.querySelector('.chip') ? 0 : Math.max(0,left),
       behavior:smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'instant' });
   }
-  const resizeCategories = () => { measureHeader(); alignCategories(false); alignCategories(false,$('#menu-categories')); };
+  function setMenuHighlight(list,label,following) {
+    const previous = $('[data-menu-active]',list);
+    for (const chip of list.children) {
+      const current = chip.dataset.menuCategory===label;
+      chip.toggleAttribute('data-menu-active',current);
+      if (following && current && label!=='Todas') chip.setAttribute('aria-current','true');
+      else chip.removeAttribute('aria-current');
+    }
+    if (previous?.dataset.menuCategory!==label) alignCategories(true,list);
+  }
+
+  function followMenuScroll() {
+    if (!active || menuCategory!=='Todas' || menuScrollFrame!==null || !route().startsWith('loja/')) return;
+    menuScrollFrame = requestAnimationFrame(() => {
+      menuScrollFrame = null;
+      const list = $('#menu-categories');
+      if (!active || !list || menuCategory!=='Todas' || !route().startsWith('loja/')) return;
+      const limit = list.parentElement.getBoundingClientRect().bottom + 12;
+      const groups = $('#menu-products').querySelectorAll('[data-menu-group]');
+      let label = 'Todas';
+      for (const group of groups) {
+        if (group.getBoundingClientRect().top > limit) break;
+        label = group.dataset.menuGroup;
+      }
+      const height = document.documentElement.scrollHeight;
+      if (label!=='Todas' && height>window.innerHeight && window.scrollY+window.innerHeight>=height-4 && !$('[data-menu-tail]')) {
+        label = groups[groups.length-1].dataset.menuGroup;
+      }
+      if ($('[data-menu-active]',list)?.dataset.menuCategory!==label) setMenuHighlight(list,label,true);
+    });
+  }
+
+  const resizeCategories = () => { measureHeader(); alignCategories(false); alignCategories(false,$('#menu-categories')); followMenuScroll(); };
   window.addEventListener('resize',resizeCategories);
+  window.addEventListener('scroll',followMenuScroll,{passive:true});
 
   function saveCart() {
     resetRequest();
@@ -338,11 +372,11 @@ export function customer(context) {
 
   const menuCategoryLabel = label => label === 'uncategorized' ? 'Itens sem categoria' : label;
   function menuChoices(store) {
-    const labels = storeCategories(store);
+    const labels = sortCategories([...storeCategories(store),...store.products.map(product=>product.category)]);
     return [
       ['Todas','grid'],
       ...labels.map(label => [label,categories.find(([name])=>name===label)?.[1] || 'spark']),
-      ...(store.products.some(product => !labels.includes(product.category)) ? [['uncategorized','spark']] : [])
+      ...(store.products.some(product => !product.category) ? [['uncategorized','spark']] : [])
     ];
   }
 
@@ -536,7 +570,8 @@ export function customer(context) {
         '<button type="button" class="btn menu-coupon-button" data-store-coupon>' + icon('tag') + ' Cupom</button>' :
         '<span class="menu-coupon-unavailable">Cupom não disponível</span>') + '</div>' +
       '<div class="menu-category-bar"><div id="menu-categories" class="chips" aria-label="Filtrar produtos por categoria">' + menuChoices(store).map(([label,symbol]) =>
-        '<button class="chip" data-menu-category="' + esc(label) + '" aria-pressed="' + (label===menuCategory) + '">' +
+        '<button class="chip" data-menu-category="' + esc(label) + '" aria-pressed="' + (label===menuCategory) + '"' +
+        (label===menuCategory ? ' data-menu-active' : '') + '>' +
         icon(symbol) + ' ' + esc(menuCategoryLabel(label)) + '</button>').join('') + '</div></div>' +
       '<p id="menu-count" class="muted menu-count" aria-live="polite"></p><div id="menu-products"></div></div>';
     const couponButton = $('[data-store-coupon]');
@@ -547,9 +582,10 @@ export function customer(context) {
       const pastFirstProducts = $('#menu-products').getBoundingClientRect().top < $('.menu-category-bar').getBoundingClientRect().bottom;
       menuCategory = button.dataset.menuCategory;
       menuVisible = showcaseBatchSize;
-      for (const chip of $('#menu-categories').children) chip.setAttribute('aria-pressed',String(chip===button));
+      const list = $('#menu-categories');
+      for (const chip of list.children) chip.setAttribute('aria-pressed',String(chip===button));
+      setMenuHighlight(list,menuCategory,false);
       menuGrid(store);
-      alignCategories(true,$('#menu-categories'));
       if (pastFirstProducts) $('.menu-head').scrollIntoView?.({ block:'start' });
     };
     $('#menu-products').onclick = event => {
@@ -638,13 +674,14 @@ export function customer(context) {
         if (!slice.length) continue;
         if (!grids.has(group.label)) {
           const grid = '<div class="products"></div>';
-          root.insertAdjacentHTML('beforeend',showAll ? '<section class="menu-group"><h3>' + icon(group.symbol) + ' ' +
+          root.insertAdjacentHTML('beforeend',showAll ? '<section class="menu-group" data-menu-group="' + esc(group.label) + '"><h3>' + icon(group.symbol) + ' ' +
             esc(menuCategoryLabel(group.label)) + '</h3>' + grid + '</section>' : grid);
           grids.set(group.label,showAll ? $('.products',root.lastElementChild) : root.lastElementChild);
         }
         grids.get(group.label).insertAdjacentHTML('beforeend',slice.map(product => menuProductMarkup(product,showAll ? 'h4' : 'h3')).join(''));
       }
       syncProductQuantities(store);
+      followMenuScroll();
       if (end >= count) { stopBatch(); return; }
       root.insertAdjacentHTML('beforeend','<div class="batch-sentinel" data-menu-tail aria-hidden="true"></div>');
       observeBatch($('[data-menu-tail]',root),() => {
@@ -1292,6 +1329,8 @@ export function customer(context) {
     clearInterval(ordersTimer);
     orderStream?.close();
     window.removeEventListener('resize',resizeCategories);
+    window.removeEventListener('scroll',followMenuScroll);
+    if (menuScrollFrame!==null) cancelAnimationFrame(menuScrollFrame);
     window.removeEventListener('hashchange',refreshCatalog);
     window.removeEventListener('focus',refreshCatalog);
     document.removeEventListener('click',closeShowcaseFilter);

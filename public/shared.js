@@ -3,9 +3,11 @@ export const main = $('#main');
 export const dialog = $('#dialog');
 export const categories = [
   ['Todas','grid'], ['Hambúrguer','burger'], ['Pizza','pizza'], ['Marmitex','bowl'], ['Porções','bowl'],
-  ['Macarrão','bowl'], ['Açaí','cup'], ['Telecerveja','beer'], ['Japonesa','sushi'], ['Bebidas','cup'], ['Outros','grid']
+  ['Macarrão','bowl'], ['Salgados','bag'], ['Japonesa','sushi'], ['Açaí','cup'], ['Telecerveja','beer'], ['Bebidas','cup'], ['Outros','grid']
 ];
-export const sortCategories = values => [...values].sort((a,b) => categories.findIndex(([name])=>name===a)-categories.findIndex(([name])=>name===b));
+const categoryOrder = new Map(categories.map(([name],index)=>[name,index]));
+export const sortCategories = values => [...new Set(values.filter(Boolean))].sort((a,b) =>
+  (categoryOrder.get(a) ?? categories.length)-(categoryOrder.get(b) ?? categories.length) || a.localeCompare(b,'pt-BR'));
 export const money = value => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(value / 100);
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
@@ -18,7 +20,7 @@ export const payments = { pix_delivery:'Pix na entrega', card_delivery:'Cartão 
 export const fallbackImages = {
   Hambúrguer:'/assets/burger.webp', Pizza:'/assets/pizza.webp', Japonesa:'/assets/sushi.webp',
   Porções:'/assets/bowl.webp', Bebidas:'/assets/icon.svg?v=motoboy', Açaí:'/assets/bowl.webp', Telecerveja:'/assets/icon.svg?v=motoboy', Marmitex:'/assets/bowl.webp',
-  Macarrão:'/assets/bowl.webp', Outros:'/assets/icon.svg?v=motoboy'
+  Macarrão:'/assets/bowl.webp', Salgados:'/assets/icon.svg?v=motoboy', Outros:'/assets/icon.svg?v=motoboy'
 };
 const icons = {
   pin:'<path d="M20 10c0 5-8 11-8 11s-8-6-8-11a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',

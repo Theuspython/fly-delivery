@@ -89,9 +89,9 @@ p { line-height:1.5 }
 .chips { display:flex; gap:9px; overflow-x:auto; padding:3px 3px 8px; margin-left:-3px; scrollbar-width:thin }
 .chip { display:inline-flex; align-items:center; justify-content:center; gap:8px; white-space:nowrap; border:1px solid var(--line); border-radius:11px; min-height:44px; padding:8px 14px; background:var(--surface); color:var(--ink); font-weight:700; font-size:.86rem }
 .chip .icon { color:#a44c32; width:18px; height:18px }
-.chip[aria-pressed=true] { color:#fff; border-color:var(--orange); background:var(--orange) }
-.chip[aria-pressed=true] .icon { color:inherit }
-.chip:hover:not([aria-pressed=true]) { background:var(--soft) }
+.chip:is([aria-pressed=true]:not([data-menu-category]),[data-menu-active]) { color:#fff; border-color:var(--orange); background:var(--orange) }
+.chip:is([aria-pressed=true]:not([data-menu-category]),[data-menu-active]) .icon { color:inherit }
+.chip:hover:not([aria-pressed=true]):not([data-menu-active]) { background:var(--soft) }
 .muted { color:var(--muted); font-size:.86rem }
 .pilot-label { margin:0 0 13px; color:#8b4b27; font-size:.81rem; font-weight:700; line-height:1.45 }
 .pilot-label .icon { width:15px; height:15px; margin-right:4px }

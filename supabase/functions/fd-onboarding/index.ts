@@ -34,7 +34,7 @@ async function rpc(name: string, body: unknown, token: string) {
   throw new Failure(502,'O cadastro não pôde ser concluído. Tente novamente.');
 }
 
-const categories = new Set(['Hambúrguer','Pizza','Japonesa','Porções','Açaí','Telecerveja','Marmitex','Bebidas','Macarrão','Outros']);
+const categories = new Set(['Hambúrguer','Pizza','Japonesa','Porções','Açaí','Telecerveja','Marmitex','Bebidas','Macarrão','Salgados','Outros']);
 const legacyCategories = new Map([['Brasileira','Porções']]);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const validPassword = (value: unknown): value is string =>
