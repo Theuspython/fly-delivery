@@ -2,6 +2,7 @@ import { mountPromotionDays } from './promotions.js';
 import { mountPlatformCoupons } from './platform-coupons.js';
 import { percentage } from './invoices.js';
 import { createCommissionDashboard } from './admin-dashboard.js';
+import { mountHistoryCleanup } from './admin-history-cleanup.js';
 import { createMealEditor } from './meal-choices.js';
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, sortCategories, empty } from './shared.js';
@@ -103,7 +104,7 @@ export function storeSettings(store,done) {
   const el = modal('Perfil da loja',
     '<form class="form-stack" id="store-form"><div class="store-settings-summary"><section class="panel"><h3>Foto da loja</h3><label>Foto ou logo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
     (image ? '<label class="check"><input name="remove_photo" type="checkbox"> Remover foto atual</label>' : '') +
-    '<p class="muted">JPG, PNG ou WebP, até 3 MB.</p></section>' +
+    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 100 KB.</p></section>' +
     '<section class="panel"><h3>Entrega e publicação</h3><div class="fields-two"><label>Taxa de entrega (R$)<input name="fee" type="number" step="0.01" min="0" max="1000" required value="' +
     store.fee / 100 + '"></label><label>Prazo (min)<input name="eta" type="number" min="5" max="180" required value="' +
     store.eta + '"></label></div><label class="check"><input name="active" type="checkbox"' + (store.active || (!store.weekly_hours && !store.address) ? ' checked' : '') +
@@ -128,7 +129,7 @@ export function storeSettings(store,done) {
   bindSubmit($('#store-form',el),async data => {
     const file = data.get('photo');
     if (file?.size && file !== uploadedFile) {
-      if (file.size > 3 * 1024 * 1024) throw new Error('A foto deve ter até 3 MB.');
+      if (file.size > 20 * 1024 * 1024) throw new Error('A foto deve ter até 20 MB.');
       image = (await api('upload?store=' + encodeURIComponent(store.id),file)).url;
       uploadedFile = file;
     }
@@ -167,7 +168,7 @@ export function productForm(store, product, done) {
     '<fieldset class="optional-editor"><legend>Opcionais do produto</legend><label class="check"><input type="checkbox" name="has_options"' +
     ((product?.options ?? []).length ? ' checked' : '') + '> Este produto tem opcionais</label><div data-options-editor><p class="muted">O cliente pode escolher um ou mais adicionais. O valor é somado por unidade do produto.</p><div data-option-rows></div><button type="button" class="btn outline" data-add-option>Adicionar opcional</button></div></fieldset>' +
     (photo ? '<button class="text-button" type="button" data-remove-photo>Remover foto atual</button>' : '') +
-    '<p class="muted">JPG, PNG ou WebP, até 3 MB.</p><label class="check"><input name="active" type="checkbox"' +
+    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 100 KB.</p><label class="check"><input name="active" type="checkbox"' +
     (product?.active !== false ? ' checked' : '') + '> Disponível no cardápio</label>' + formEnd('Salvar produto') + '</form>');
   const sizesEnabled = $('[name=has_sizes]',el);
   const stockEnabled = $('[name=tracks_stock]',el);
@@ -237,7 +238,7 @@ export function productForm(store, product, done) {
     const stockChange = stock !== previousStock ? {stock_quantity:stock,stock_expected:previousStock} : {};
     const file = data.get('photo');
     if (file?.size && file !== selectedFile) {
-      if (file.size > 3 * 1024 * 1024) throw new Error('A foto deve ter até 3 MB.');
+      if (file.size > 20 * 1024 * 1024) throw new Error('A foto deve ter até 20 MB.');
       photo = (await api('upload?store=' + encodeURIComponent(store.id),file)).url;
       selectedFile = file;
     }
@@ -279,14 +280,16 @@ export function operations(page, context) {
   let timer,searchTimer,drawer;
   let sequence = 0,clientPage = 0;
   let storeList = [],refreshing = false,search = '';
-  const section=()=>['clientes','dashboard','promocoes','cupons'].includes(location.hash.slice(1))?location.hash.slice(1):'estabelecimentos';
+  const links=[['estabelecimentos','Estabelecimentos','store'],['clientes','Clientes','person'],['dashboard','Dashboard','grid'],['promocoes','Dias promocionais','calendar'],['cupons','Criar cupom de desconto','tag'],['limpeza','Limpeza de histórico','trash']];
+  const currentLink=()=>links.find(([key])=>key===location.hash.slice(1))??links[0];
+  const section=()=>currentLink()[0];
   function closeMenu(){if(drawer?.open)drawer.close();}
   function openMenu(){
     if(!drawer){drawer=document.createElement('dialog');drawer.id='admin-navigation';drawer.className='merchant-drawer';drawer.setAttribute('aria-labelledby','admin-menu-title');document.body.append(drawer);
       drawer.onclick=event=>{if(event.target===drawer||event.target.closest('[data-close-menu],a'))closeMenu();};
       drawer.addEventListener('close',()=> $('[data-admin-menu]')?.setAttribute('aria-expanded','false'));
     }
-    drawer.innerHTML='<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="admin-menu-title">Administração</h2></div><button class="icon-button" data-close-menu aria-label="Fechar menu">'+icon('close')+'</button></div><nav aria-label="Áreas da administração">'+[['estabelecimentos','Estabelecimentos','store'],['clientes','Clientes','person'],['dashboard','Dashboard','grid'],['promocoes','Dias promocionais','calendar'],['cupons','Criar cupom de desconto','tag']].map(([key,label,symbol])=>'<a href="#'+key+'"'+(key===section()?' aria-current="page"':'')+'>'+icon(symbol)+label+'</a>').join('')+'</nav>';
+    drawer.innerHTML='<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="admin-menu-title">Administração</h2></div><button class="icon-button" data-close-menu aria-label="Fechar menu">'+icon('close')+'</button></div><nav aria-label="Áreas da administração">'+links.map(([key,label,symbol])=>'<a href="#'+key+'"'+(key===section()?' aria-current="page"':'')+'>'+icon(symbol)+label+'</a>').join('')+'</nav>';
     drawer.showModal();$('[data-admin-menu]')?.setAttribute('aria-expanded','true');
   }
   async function refresh(force=false){
@@ -316,12 +319,13 @@ export function operations(page, context) {
     dashboard.stop();
     clearInterval(timer);clearTimeout(searchTimer);sequence++;refreshing=false;
     const user=context.user;
-    main.innerHTML='<div class="wrap page ops"><div class="ops-heading"><div class="ops-mark">'+icon('shield')+'</div><div><span class="overline accent">GESTÃO FLY DELIVERY</span><h1>'+({clientes:'Clientes',dashboard:'Dashboard',promocoes:'Dias promocionais',cupons:'Criar cupom de desconto',estabelecimentos:'Estabelecimentos'}[section()])+'</h1></div></div><div id="ops-body"></div></div>';
+    main.innerHTML='<div class="wrap page ops"><div class="ops-heading"><div class="ops-mark">'+icon('shield')+'</div><div><span class="overline accent">GESTÃO FLY DELIVERY</span><h1>'+currentLink()[1]+'</h1></div></div><div id="ops-body"></div></div>';
     const body=$('#ops-body');
     if(user?.role!=='admin'){closeMenu();body.innerHTML='<div class="panel">'+empty(user?'Acesso restrito':'Entre para continuar',user?'Seu perfil não tem acesso a esta área.':'Use o login e a senha da administração.','shield')+(user?'<button class="btn outline" data-switch-account>Trocar de conta</button>':'<button class="btn primary" data-signin>Entrar</button>')+'</div>';return;}
     if(section()==='dashboard'){dashboard.mount(body);return;}
     if(section()==='promocoes'){mountPromotionDays(body);return;}
     if(section()==='cupons'){mountPlatformCoupons(body);return;}
+    if(section()==='limpeza'){mountHistoryCleanup(body);return;}
     body.innerHTML=(section()==='clientes'?'<label class="search-field admin-client-search">'+icon('search')+'<input id="client-search" type="search" maxlength="100" placeholder="Buscar cliente ou celular" value="'+esc(search)+'"></label>':'<section class="panel commission-settings"><h2>Comissão da plataforma</h2><p id="commission-current" class="muted">Carregando taxa…</p><form id="commission-form" class="form-stack"><label>Porcentagem sobre as vendas (%)<input type="number" name="percentage" min="0" max="100" step="0.01" required placeholder="Ex.: 10"></label><p class="muted">A confirmação aplica a taxa aos próximos pedidos entregues de todos os estabelecimentos. Comissões já registradas permanecem iguais. A entrega não entra na base de cálculo.</p>'+formEnd('Confirmar taxa global')+'</form><p id="commission-ready" class="muted"></p></section>')+'<p class="form-error" id="ops-error" role="alert"></p><section id="ops-stores"><p class="muted">Carregando…</p></section>';
     if($('#client-search'))$('#client-search').oninput=event=>{search=event.target.value;clientPage=0;clearTimeout(searchTimer);searchTimer=setTimeout(()=>refresh(true),250);};
     if($('#commission-form'))bindSubmit($('#commission-form'),async fields=>{

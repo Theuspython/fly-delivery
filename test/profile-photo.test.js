@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import {randomBytes} from 'node:crypto';
 import {once} from 'node:events';
 import {createServer} from 'node:http';
 import {test} from 'node:test';
+import sharp from 'sharp';
 
 test('profile images upload privately, keep ownership and use each app session for authorized downloads',async()=>{
   const buyer='10000000-0000-4000-8000-000000000001';
@@ -45,7 +47,7 @@ test('profile images upload privately, keep ownership and use each app session f
     assert.equal((await upload(jpeg,'image/jpeg','cliente','fd_cliente_access=merchant-with-order')).status,403);
     assert.equal((await upload(Buffer.from('<svg/>'),'image/png')).status,400);
     assert.equal((await upload(jpeg,'text/html')).status,400);
-    assert.equal((await upload(Buffer.alloc(3*1024*1024+1),'image/jpeg')).status,413);
+    assert.equal((await upload(Buffer.alloc(20*1024*1024+1),'image/jpeg')).status,413);
     requests.length=0;
     const response=await upload();assert.equal(response.status,201);
     const updated=await response.json();
@@ -73,5 +75,22 @@ test('profile images upload privately, keep ownership and use each app session f
     const menu=await fetch(origin+'/api/upload?store='+buyer,{method:'POST',
       headers:{Origin:origin,'Content-Type':'image/jpeg','X-FD-App':'loja',Cookie:'fd_loja_access=merchant-with-order'},body:jpeg});
     assert.equal(menu.status,201);assert.match((await menu.json()).url,/\/object\/public\/fly-delivery-menu\//);
+
+    failSave=false;
+    const large=await sharp(randomBytes(1200*800*4),{raw:{width:1200,height:800,channels:4}}).png().toBuffer();
+    assert.ok(large.length>1_000_000);
+    assert.equal((await upload(large,'image/png')).status,201);
+    const menuUpload=await fetch(origin+'/api/upload?store='+buyer,{method:'POST',
+      headers:{Origin:origin,'Content-Type':'image/png','X-FD-App':'loja',Cookie:'fd_loja_access=merchant-with-order'},body:large});
+    assert.equal(menuUpload.status,201);
+    const saved=requests.filter(x=>x.method==='POST'&&x.path.endsWith('.webp'));
+    assert.equal(saved.length,2);
+    for (const object of saved) {
+      assert.ok(object.bytes.length<=100_000);
+      const metadata=await sharp(object.bytes).metadata();
+      assert.equal(metadata.format,'webp');
+      assert.equal(metadata.hasAlpha,true);
+      assert.ok(Math.abs(metadata.width/metadata.height-1.5)<.02);
+    }
   }finally{await Promise.all([new Promise(r=>app.close(r)),new Promise(r=>upstream.close(r))]);}
 });

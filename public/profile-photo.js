@@ -1,5 +1,5 @@
 export const maxProfileSourceBytes=20*1024*1024;
-export const maxProfileBytes=200*1024;
+export const maxProfileBytes=100_000;
 export function validateProfilePhoto(file) {
   if(!file?.size||!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Escolha uma foto JPG, PNG ou WebP.');
   if(file.size>maxProfileSourceBytes)throw new Error('Escolha uma foto de até 20 MB para compactar.');

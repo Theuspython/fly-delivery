@@ -725,3 +725,12 @@ p { line-height:1.5 }
 .checkout-coupon-status.coupon-accepted { color:#17613b; font-weight:700; }
 .checkout-discounts { display:grid; gap:.5rem; }
 .cash-payment:not([hidden]) { display:grid; gap:.35rem; }
+
+.history-cleanup { max-width:48rem; margin-bottom:1rem; }
+.history-cleanup h2 { margin-bottom:.45rem; }
+.history-cleanup [hidden],.history-cleanup[hidden] { display:none; }
+.history-cleanup .form-stack { margin-top:1rem; }
+.cleanup-counts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.5rem; margin:.85rem 0; }
+.cleanup-counts div { padding:.65rem; border:1px solid var(--line); border-radius:.65rem; background:var(--page); }
+.cleanup-counts dt { font-size:.8rem; color:var(--muted); overflow-wrap:anywhere; }
+.cleanup-counts dd { margin:.2rem 0 0; font-weight:850; overflow-wrap:anywhere; }

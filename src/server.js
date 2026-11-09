@@ -6,6 +6,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createBilling } from './billing.js';
 import { catalogPage } from './catalog.js';
 import { RealtimeClient } from '@supabase/realtime-js';
+import sharp from 'sharp';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url)).replace(/\/$/, '');
 const supabase = process.env.SUPABASE_URL?.replace(/\/$/, '');
@@ -30,6 +31,8 @@ function cookiesFor(req) {
   return { sessionCookie:'fd_' + scope + '_access', refreshCookie:'fd_' + scope + '_refresh' };
 }
 const limit = 3 * 1024 * 1024;
+const maxImageSourceBytes = 20 * 1024 * 1024;
+const maxImageBytes = 100_000;
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -59,12 +62,27 @@ async function readImage(req) {
   const types = { 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp' };
   const type = req.headers['content-type'];
   if (!types[type]) throw new HttpError(400,'Envie uma foto JPG, PNG ou WebP.');
-  const bytes = await requestBody(req);
+  const bytes = await requestBody(req,maxImageSourceBytes);
   const valid = (type === 'image/jpeg' && bytes.subarray(0,3).toString('hex') === 'ffd8ff') ||
     (type === 'image/png' && bytes.subarray(0,8).toString('hex') === '89504e470d0a1a0a') ||
     (type === 'image/webp' && bytes.subarray(0,4).toString() === 'RIFF' && bytes.subarray(8,12).toString() === 'WEBP');
   if (!valid) throw new HttpError(400,'A foto não corresponde ao formato informado.');
   return { bytes,type,extension:types[type] };
+}
+
+async function compactImage(image) {
+  if (image.bytes.length <= maxImageBytes) return image;
+  try {
+    const source = sharp(image.bytes,{limitInputPixels:40_000_000}).autoOrient();
+    for (const [edge,quality] of [[960,82],[960,70],[720,74],[560,70],[400,64],[256,56]]) {
+      const bytes = await source.clone().resize(edge,edge,{fit:'inside',withoutEnlargement:true})
+        .webp({quality}).toBuffer();
+      if (bytes.length <= maxImageBytes) return {bytes,type:'image/webp',extension:'webp'};
+    }
+  } catch {
+    throw new HttpError(400,'Não foi possível abrir esta foto. Escolha outra imagem JPG, PNG ou WebP.');
+  }
+  throw new HttpError(400,'Não foi possível reduzir esta foto a 100 KB. Escolha outra imagem.');
 }
 
 const profilePhotoPath = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp)$/;
@@ -105,17 +123,20 @@ function setSession(req, res, tokens) {
   ]);
 }
 
-async function upstream(path, { method = 'POST', token, body, type = 'application/json' } = {}) {
+async function upstream(path, { method = 'POST', token, body, type = 'application/json', timeout = path.startsWith('/functions/') ? 25000 : 12000 } = {}) {
   if (!supabase || !publishableKey) throw new HttpError(503, 'O banco de dados ainda não foi configurado.');
   const headers = { apikey: publishableKey, 'Content-Type': type };
   if (token) headers.Authorization = 'Bearer ' + token;
   const response = await fetch(supabase + path, {
     method, headers, body: type === 'application/json' && body !== undefined ? JSON.stringify(body) : body,
-    signal: AbortSignal.timeout(path.startsWith('/functions/') ? 25000 : 12000)
+    signal: AbortSignal.timeout(timeout)
   });
   const data = response.status === 204 ? null : await response.json();
   if (!response.ok) {
     const message = data?.message ?? data?.msg ?? data?.error_description;
+    if (data?.code === '57014' && path.endsWith('/fd_admin_history_cleanup')) {
+      throw new HttpError(504,'O período levou muito tempo para processar. Consulte uma prévia com um intervalo menor.');
+    }
     if (data?.code === 'P0001' && message?.startsWith('FD: ')) throw new HttpError(message==='FD: Fatura não encontrada.'?404:409, message.slice(4));
     if (response.status === 401) throw new HttpError(401, 'Entre novamente para continuar.');
     if (path.startsWith('/functions/') && data?.code === 'FD_ONBOARDING' && typeof message === 'string') {
@@ -378,17 +399,23 @@ async function api(req, res, url) {
     if (typeof action !== 'string' || !input || typeof input !== 'object' || Array.isArray(input)) {
       throw new HttpError(400, 'Comando inválido.');
     }
+    if (action === 'admin_history_cleanup') {
+      if (sessionCookie !== 'fd_admin_access') throw new HttpError(403,'Acesso exclusivo da administração.');
+      const data = await upstream('/rest/v1/rpc/fd_admin_history_cleanup',{ token:access,body:{input},timeout:50000 });
+      return json(res,200,data);
+    }
     const payload = action === 'customer_profile' && ('name' in input || 'phone' in input) ? profileFields(input) : input;
     const data = await upstream('/rest/v1/rpc/fd_api', { token: access, body: { action, input:payload } });
     return json(res, 200, data);
   }
   if (url.pathname === '/api/upload-profile') {
     if (sessionCookie !== 'fd_cliente_access' || !access) throw new HttpError(401,'Entre como cliente para enviar sua foto.');
-    const { bytes,type,extension } = await readImage(req);
+    const image = await readImage(req);
     const user = await upstream('/rest/v1/rpc/fd_api',{ token:access,body:{ action:'session',input:{} } });
     if (user?.role !== 'customer') throw new HttpError(403,'Foto exclusiva do perfil do cliente.');
     const previous = await upstream('/rest/v1/rpc/fd_api',{ token:access,body:{ action:'customer_profile',input:{} } });
     if (!previous) throw new HttpError(409,'Complete seu cadastro antes de enviar a foto.');
+    const { bytes,type,extension } = await compactImage(image);
     const key = user.id + '/' + crypto.randomUUID() + '.' + extension;
     await upstream('/storage/v1/object/fly-delivery-profiles/' + key,{ token:access,body:bytes,type });
     const remove = path => upstream('/storage/v1/object/fly-delivery-profiles',{
@@ -407,10 +434,15 @@ async function api(req, res, url) {
     return json(res,201,updated);
   }
   if (url.pathname === '/api/upload') {
-    if (!access) throw new HttpError(401,'Entre para continuar.');
+    if (sessionCookie !== 'fd_loja_access' || !access) throw new HttpError(401,'Entre no estabelecimento para enviar a foto.');
     const store = url.searchParams.get('store') ?? '';
     if (!/^[0-9a-f-]{36}$/.test(store)) throw new HttpError(400,'Envie uma foto JPG, PNG ou WebP.');
-    const { bytes,type,extension } = await readImage(req);
+    const image = await readImage(req);
+    if (image.bytes.length > maxImageBytes) {
+      const user = await upstream('/rest/v1/rpc/fd_api',{ token:access,body:{ action:'session',input:{} } });
+      if (user?.role !== 'merchant') throw new HttpError(403,'Envio exclusivo do estabelecimento.');
+    }
+    const { bytes,type,extension } = await compactImage(image);
     const key = store + '/' + crypto.randomUUID() + '.' + extension;
     await upstream('/storage/v1/object/fly-delivery-menu/' + key,{ token:access,body:bytes,type });
     return json(res,201,{ url:supabase + '/storage/v1/object/public/fly-delivery-menu/' + key });

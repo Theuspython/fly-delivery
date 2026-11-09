@@ -32,6 +32,7 @@ const icons = {
   arrow:'<path d="M4 12h15m-6-6 6 6-6 6"/>',
   back:'<path d="M20 12H5m6-6-6 6 6 6"/>',
   calendar:'<rect x="4" y="6" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v5m8-5v5"/>',
+  trash:'<path d="M3 6h18M8 6V3h8v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>',
   tag:'<path d="M20 13 13 20 4 11V4h7l9 9Z"/><circle cx="8" cy="8" r="1"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   bike:'<circle cx="5" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="m5 17 5-8 4 8h5l-4-11h3M9 9H6"/>',

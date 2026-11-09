@@ -214,7 +214,7 @@ function account() {
   const el = modal('Minha conta',(customerPhoto ? '<div class="account-profile"><div data-profile-preview>' +
     profileAvatar(profile.photo,name,'cliente',true) + '</div><div><h3>' + esc(name) + '</h3><p class="muted">' +
     esc(profile.phone) + '</p></div></div><form id="profile-photo-form" class="form-stack"><label>Foto de perfil<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required></label>' +
-    '<p class="muted">JPG, PNG ou WebP, até 20 MB. Compactamos a foto antes de enviar. Ela aparece nos pedidos recebidos pelos estabelecimentos.</p><p class="muted" data-photo-status role="status"></p>' +
+    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 100 KB e aparece nos pedidos recebidos pelos estabelecimentos.</p><p class="muted" data-photo-status role="status"></p>' +
     '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">Salvar foto</button></form>' :
     '<p class="dialog-copy">' + esc(name) + '</p>') + '<div class="order-actions">' +
     (canChangePassword ? '<button class="btn primary" data-change-password>Alterar senha</button>' : '') +

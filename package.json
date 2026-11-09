@@ -11,6 +11,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@supabase/realtime-js": "2.119.0"
+    "@supabase/realtime-js": "2.119.0",
+    "sharp": "0.34.5"
   }
 }
