@@ -10,6 +10,19 @@ const countsMarkup = result => '<dl class="cleanup-counts">' + [
   ['Itens dos pedidos',result.items], ['Pedidos',result.orders], ['Faturas pagas',result.invoices]
 ].map(([label,count]) => '<div><dt>'+label+'</dt><dd>'+counts.format(count)+'</dd></div>').join('')+'</dl>';
 
+function retainedMarkup(result) {
+  const retained = result.retained ?? {};
+  const reasons = [
+    [retained.not_delivered,'pedido sem status de entregue','pedidos sem status de entregue'],
+    [retained.outside_invoice_day,'pedido entregue em outra data','pedidos entregues em outra data'],
+    [retained.without_paid_invoice,'pedido entregue sem fatura quitada','pedidos entregues sem fatura quitada'],
+    [retained.outside_billed_orders,'pedido fora do fechamento da fatura','pedidos fora do fechamento da fatura'],
+    [retained.pending_invoices,'fatura pendente no período','faturas pendentes no período']
+  ].filter(([count])=>count>0);
+  return reasons.length ? '<p><strong>Ficam fora da exclusão</strong></p><ul>' +
+    reasons.map(([count,singular,plural])=>'<li>'+counts.format(count)+' '+(count===1 ? singular : plural)+'</li>').join('')+'</ul>' : '';
+}
+
 export function mountHistoryCleanup(root) {
   root.innerHTML = '<section class="panel history-cleanup"><div class="section-head"><h2>Selecionar período</h2></div>' +
     '<p class="muted">A limpeza remove faturas quitadas e os pedidos entregues que fazem parte delas. O histórico dos clientes e os relatórios passam a refletir os registros que permanecerem no sistema.</p>' +
@@ -39,7 +52,7 @@ export function mountHistoryCleanup(root) {
     from.required = custom;
     to.required = range;
     $('[data-cleanup-hint]',form).textContent = custom
-      ? 'O filtro usa a data da fatura, pelo horário de Brasília. As duas datas do intervalo estão incluídas.'
+      ? 'O filtro usa a data da fatura, que acompanha o dia da entrega, pelo horário de Brasília. As duas datas do intervalo estão incluídas.'
       : 'O filtro usa a data de pagamento da fatura, pelo horário de Brasília.';
     revision++;
     output.hidden = true;
@@ -64,7 +77,8 @@ export function mountHistoryCleanup(root) {
     const scope = result.paid_before
       ? 'Pagamentos anteriores a '+dateLabel(result.paid_before)
       : 'Faturas de '+dateLabel(result.from)+(result.from===result.to ? '' : ' a '+dateLabel(result.to));
-    output.innerHTML = '<h2>Prévia da limpeza</h2><p class="muted">'+esc(scope)+'</p>'+countsMarkup(result) +
+    output.innerHTML = '<h2>Prévia da limpeza</h2><p class="muted">'+esc(scope)+'</p><p>Registros a excluir por inteiro</p>'+countsMarkup(result) +
+      retainedMarkup(result) +
       (result.unmatched_invoices ? '<p class="form-error">'+counts.format(result.unmatched_invoices)+' fatura(s) ficaram fora da limpeza porque o total dos pedidos diverge do total faturado.</p>' : '') +
       (result.invoices ? '<div class="order-actions"><button class="btn outline danger-text" data-cleanup-confirm>'+icon('trash')+' Excluir registros</button></div>'
         : '<p class="muted">Nenhuma fatura quitada elegível neste período.</p>');
@@ -96,7 +110,7 @@ export function mountHistoryCleanup(root) {
         }
         if (execute.isConnected && el.open) el.close();
         if (revision===request && root.isConnected) {
-          output.innerHTML = '<h2>Limpeza concluída</h2><p class="muted">'+esc(scope)+'</p>'+countsMarkup(removed);
+          output.innerHTML = '<h2>Limpeza concluída</h2><p class="muted">'+esc(scope)+'</p><p>Registros excluídos por inteiro</p>'+countsMarkup(removed)+retainedMarkup(result);
         }
         toast('Histórico selecionado excluído.');
       });
