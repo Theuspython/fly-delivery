@@ -592,7 +592,18 @@ export function customer(context) {
       const clear=event.target.closest('[data-clear-meal]');
       if(clear){const card=clear.closest('[data-menu-product]'),product=store.products.find(p=>p.id===card.dataset.menuProduct),size=productSize(product)?.name??'';mealDrafts.set(product.id+':'+size,mealSelection(product,size).filter(group=>group.group_id!==clear.dataset.clearMeal));syncProductQuantities(store);return;}
       const button = event.target.closest('[data-product]');
-      if (button) setItem(store,store.products.find(product => product.id === button.dataset.product),Number(button.dataset.menuDelta));
+      if (!button) return;
+      const increment = Number(button.dataset.menuDelta);
+      const card = button.closest('[data-menu-product]');
+      const accompaniments = $('[data-product-accompaniments]',card);
+      if (increment > 0 && !accompaniments.hidden && !accompaniments.open) {
+        accompaniments.open = true;
+        const summary = $('summary',accompaniments);
+        summary.focus({preventScroll:true});
+        summary.scrollIntoView({block:'nearest'});
+        return;
+      }
+      setItem(store,store.products.find(product => product.id === button.dataset.product),increment);
     };
     $('#menu-products').onchange = event => {
       const input = event.target.closest('[data-option],[data-size],[data-meal-option]');
@@ -698,7 +709,9 @@ export function customer(context) {
       (product.available_stock === 0 ? '<span class="product-stock-out">Esgotado</span>' : '') + '</div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
       '</div>' + ((product.sizes ?? []).length ? '<fieldset class="product-sizes"><legend>Escolha o tamanho</legend><div>' + product.sizes.map(size=>
         '<label><input type="radio" name="size-' + esc(product.id) + '" data-size value="' + esc(size.name) + '"' + (productSize(product)?.name===size.name ? ' checked' : '') + '><span><b>' + esc(size.name) + '</b><small>' + money(size.price) + '</small></span></label>').join('') + '</div></fieldset>' : '') +
-      '<div data-meal-choices></div>' + ((product.options ?? []).length ? '<details class="product-options"><summary>Opcionais <span>' + product.options.length + ' disponíveis</span></summary><div class="option-choices">' +
+      '<details class="product-options product-accompaniments" data-product-accompaniments hidden><summary>Ver acompanhamentos</summary>' +
+      '<div data-meal-choices></div><p class="muted">Toque em + para adicionar o produto com as escolhas feitas.</p></details>' +
+      ((product.options ?? []).length ? '<details class="product-options"><summary>Opcionais <span>' + product.options.length + ' disponíveis</span></summary><div class="option-choices">' +
         product.options.map(option=>'<label><input type="checkbox" data-option="' + esc(option.id) + '"' + (optionIds(product).includes(option.id)?' checked':'') + '><span>' + esc(option.name) + '</span><strong>+ ' + money(option.price) + '</strong></label>').join('') +
         '</div></details>' : '') + '<p class="configured-price" data-configured-price aria-live="polite"></p><div class="product-quantity"><button class="icon-button" data-product="' + esc(product.id) + '" data-menu-delta="-1" aria-label="Diminuir ' + esc(product.name) + '">' +
       icon('minus') + '</button><span><output aria-label="Quantidade de ' + esc(product.name) + '" data-product-quantity>0</output> no carrinho</span>' +
@@ -713,6 +726,9 @@ export function customer(context) {
       const size = productSize(product);
       const meals=resolveMealSelection(product,size?.name??'',mealSelection(product));
       const mealContainer=$('[data-meal-choices]',card),mealMarkup=mealChoicesMarkup(product,size?.name??'',mealSelection(product));
+      const accompaniments = mealContainer.parentElement;
+      accompaniments.hidden = !mealMarkup;
+      if (!mealMarkup) accompaniments.open = false;
       if(mealContainer.innerHTML!==mealMarkup){
         const focused=document.activeElement?.dataset.mealOption;mealContainer.innerHTML=mealMarkup;
         if(focused)mealContainer.querySelector('[data-meal-option="'+focused+'"]')?.focus({preventScroll:true});
