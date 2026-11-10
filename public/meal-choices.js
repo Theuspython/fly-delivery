@@ -34,9 +34,9 @@ export function mealChoicesMarkup(product,size,selection) {
   }).join('');
 }
 
-export function createMealEditor(el,product,getSizes,getCategory) {
+export function createMealEditor(el,product,getSizes) {
   const root=$('[data-meal-editor]',el);
-  root.innerHTML='<legend>Montagem do Marmitex</legend><label class="check"><input type="checkbox" data-has-meal'+(product?.meal_choices?.length?' checked':'')+'> O cliente pode escolher os acompanhamentos</label><div data-meal-groups-editor><p class="muted">Crie grupos livres, como carne, arroz ou feijão. Todas as escolhas são gratuitas. Para cada tamanho, marque se o grupo aparece e quantas opções podem ser escolhidas (até 5).</p><div data-meal-groups></div><button type="button" class="btn outline" data-add-meal-group>Adicionar grupo de escolhas</button></div>';
+  root.innerHTML='<legend>Acompanhamentos</legend><label class="check"><input type="checkbox" data-has-meal'+(product?.meal_choices?.length?' checked':'')+'> O cliente pode escolher os acompanhamentos</label><div data-meal-groups-editor><p class="muted">Crie grupos como molhos, saladas ou guarnições. Todas as escolhas são gratuitas. Para cada tamanho, marque se o grupo aparece e quantas opções podem ser escolhidas (até 5).</p><div data-meal-groups></div><button type="button" class="btn outline" data-add-meal-group>Adicionar grupo de escolhas</button></div>';
   const enabled=$('[data-has-meal]',root),rows=$('[data-meal-groups]',root);
   function addOption(group,option={}){
     const row=document.createElement('div');row.className='meal-editor-option';row.dataset.mealOptionId=option.id||crypto.randomUUID();
@@ -53,10 +53,10 @@ export function createMealEditor(el,product,getSizes,getCategory) {
     if(fresh)addOption(row);
   }
   function sync(){
-    const visible=getCategory()==='Marmitex',active=visible&&enabled.checked,sizes=getSizes();
-    root.hidden=!visible;$('[data-meal-groups-editor]',root).hidden=!active;
+    const active=enabled.checked,sizes=getSizes();
+    $('[data-meal-groups-editor]',root).hidden=!active;
     for(const input of root.querySelectorAll('input,button'))input.disabled=!active;
-    enabled.disabled=!visible;
+    enabled.disabled=false;
     for(const rule of rows.querySelectorAll('[data-meal-rule]')){
       const available=sizes.includes(rule.dataset.mealRule);rule.hidden=!available;
       $('[data-meal-rule-enabled]',rule).disabled=!active||!available;
@@ -77,7 +77,7 @@ export function createMealEditor(el,product,getSizes,getCategory) {
     if(button.hasAttribute('data-remove-meal-option')){button.closest('[data-meal-option-id]').remove();sync();}
   };
   function read(){
-    if(getCategory()!=='Marmitex'||!enabled.checked)return [];
+    if(!enabled.checked)return [];
     if(!rows.children.length)throw new Error('Adicione pelo menos um grupo de montagem.');
     return [...rows.children].map(row=>{
       const name=$('[data-meal-group-name]',row).value.trim();

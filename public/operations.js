@@ -168,7 +168,7 @@ export function productForm(store, product, done) {
     (product?.stock_quantity ?? '') + '"></label></fieldset>' +
     '<fieldset class="size-editor"><legend>Tamanhos do produto</legend><label class="check"><input type="checkbox" name="has_sizes"' + (product?.sizes?.length ? ' checked' : '') + '> O item possui tamanhos diferentes</label><div data-sizes-editor><p class="muted">Marque os tamanhos disponíveis e informe o preço de cada um.</p><div class="size-editor-grid">' +
     ['P','M','G'].map(name=>{ const size=product?.sizes?.find(size=>size.name===name); return '<div><label class="check"><input type="checkbox" data-size-enabled="' + name + '"' + (!product?.sizes?.length || size ? ' checked' : '') + '> ' + name + '</label><label>Preço ' + name + ' (R$)<input data-size-price="' + name + '" type="number" min="0.01" max="10000" step="0.01" required value="' + (size ? size.price/100 : '') + '"></label></div>'; }).join('') +
-    '</div></div></fieldset><fieldset class="meal-editor" data-meal-editor hidden></fieldset><label>Foto do produto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
+    '</div></div></fieldset><fieldset class="meal-editor" data-meal-editor></fieldset><label>Foto do produto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
     '<fieldset class="optional-editor"><legend>Opcionais do produto</legend><label class="check"><input type="checkbox" name="has_options"' +
     ((product?.options ?? []).length ? ' checked' : '') + '> Este produto tem opcionais</label><div data-options-editor><p class="muted">O cliente pode escolher um ou mais adicionais. O valor é somado por unidade do produto.</p><div data-option-rows></div><button type="button" class="btn outline" data-add-option>Adicionar opcional</button></div></fieldset>' +
     (photo ? '<button class="text-button" type="button" data-remove-photo>Remover foto atual</button>' : '') +
@@ -230,8 +230,7 @@ export function productForm(store, product, done) {
     const name = newCategory();
     return allowedCategories.find(label=>label.toLocaleLowerCase('pt-BR')===name.toLocaleLowerCase('pt-BR')) ?? name;
   }
-  mealEditor=createMealEditor(el,product,()=>sizesEnabled.checked?[...sizesEditor.querySelectorAll('[data-size-enabled]:checked')].map(input=>input.dataset.sizeEnabled):[''],productCategory);
-  categorySelect.onchange = categoryName.oninput = () => mealEditor.sync();
+  mealEditor=createMealEditor(el,product,()=>sizesEnabled.checked?[...sizesEditor.querySelectorAll('[data-size-enabled]:checked')].map(input=>input.dataset.sizeEnabled):['']);
   categoryButton.onclick = () => {
     const creating = categoryField.hidden;
     categoryField.hidden = !creating;
@@ -240,7 +239,6 @@ export function productForm(store, product, done) {
     categoryName.disabled = !creating;
     categoryButton.setAttribute('aria-expanded',String(creating));
     categoryButton.innerHTML = creating ? 'Usar categoria existente' : icon('plus') + ' Criar categoria para esta loja';
-    mealEditor.sync();
     (creating ? categoryName : categorySelect).focus();
   };
   const remove = $('[data-remove-photo]',el);
