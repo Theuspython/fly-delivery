@@ -249,7 +249,6 @@ export function productForm(store, product, done) {
       '<label>Valor (R$)<input data-option-price type="number" min="0" max="10000" step="0.01" required value="' + (option.price != null ? option.price/100 : '') + '" placeholder="0,00"></label>' +
       '<button type="button" class="icon-button" data-remove-option aria-label="Remover opcional">' + icon('close') + '</button>';
     rows.append(row);
-    $('[data-add-option]',el).disabled = rows.children.length >= 20;
   }
   function toggleOptions() {
     editor.hidden = !enabled.checked;
@@ -257,8 +256,8 @@ export function productForm(store, product, done) {
   }
   for (const option of product?.options ?? []) optionRow(option);
   enabled.onchange = () => { if (enabled.checked && !rows.children.length) optionRow(); toggleOptions(); };
-  $('[data-add-option]',el).onclick = () => { if (rows.children.length < 20) { optionRow(); rows.lastElementChild.querySelector('input').focus(); } };
-  rows.onclick = event => { const remove = event.target.closest('[data-remove-option]'); if (remove) { remove.closest('.optional-editor-row').remove(); $('[data-add-option]',el).disabled = false; } };
+  $('[data-add-option]',el).onclick = () => { optionRow(); rows.lastElementChild.querySelector('input').focus(); };
+  rows.onclick = event => event.target.closest('[data-remove-option]')?.closest('.optional-editor-row').remove();
   toggleOptions();
   const categorySelect = $('[name=category]',el);
   const categoryButton = $('[data-create-category]',el);
