@@ -1,6 +1,6 @@
 import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast, sortCategories } from './shared.js';
 import { invoicesMarkup, suspensionBanner } from './invoices.js';
-import { productForm, storeSettings, storeMarkup } from './operations.js';
+import { productForm, storeSettings, storeMarkup, organizeMenuCategories } from './operations.js';
 import { couponsMarkup, couponForm } from './promotions.js';
 import { renderLiveMarkup } from './live-markup.js';
 import { inventoryMarkup, adjustStockForm, createMerchantAlerts } from './inventory.js';
@@ -337,7 +337,7 @@ export function merchant(context) {
         finally { if (button.isConnected) button.disabled = false; }
         return;
       }
-      const store = stores.find(item => item.id === (button.dataset.settings || button.dataset.open || button.dataset.addProduct || button.dataset.store));
+      const store = stores.find(item => item.id === (button.dataset.settings || button.dataset.open || button.dataset.addProduct || button.dataset.organizeCategories || button.dataset.store));
       const refreshInventory = async () => { await refresh(true); alerts.sync(); };
       if (button.dataset.adjustStock) {
         const product = store?.products.find(item => item.id === button.dataset.adjustStock);
@@ -345,6 +345,7 @@ export function merchant(context) {
         return;
       }
       if (button.dataset.settings) storeSettings(store,() => refresh(true));
+      if (button.dataset.organizeCategories) organizeMenuCategories(store,() => refresh(true));
       if (button.dataset.addProduct) productForm(store,null,refreshInventory);
       if (button.dataset.editProduct) productForm(store,store.products.find(item => item.id === button.dataset.editProduct),refreshInventory);
       if (button.dataset.page !== undefined) {

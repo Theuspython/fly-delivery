@@ -5,7 +5,7 @@ import { createCommissionDashboard } from './admin-dashboard.js';
 import { mountHistoryCleanup } from './admin-history-cleanup.js';
 import { createMealEditor } from './meal-choices.js';
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
-  categories, sortCategories, empty } from './shared.js';
+  categories, sortCategories, sortMenuCategories, empty } from './shared.js';
 
 const formEnd = label => '<p class="form-error" data-form-error role="alert"></p><button class="btn primary wide" type="submit">' + esc(label) + '</button>';
 
@@ -145,8 +145,48 @@ export function storeSettings(store,done) {
   });
 }
 
+const availableMenuCategories = store => sortMenuCategories([...(store.categories ?? [store.category]),...(store.menu_categories ?? [])],store.menu_category_order);
+
+export function organizeMenuCategories(store,done) {
+  const el = modal('Organizar categorias',
+    '<form class="form-stack" id="menu-order-form"><p class="muted">Use Subir e Descer para definir a ordem das categorias no cardápio da loja.</p>' +
+    '<ol class="menu-category-order">' + availableMenuCategories(store).map(label =>
+      '<li data-order-category="' + esc(label) + '"><strong>' + esc(label) + '</strong><div>' +
+      '<button class="btn outline" type="button" data-move-category="up" aria-label="Subir ' + esc(label) + '">Subir</button>' +
+      '<button class="btn outline" type="button" data-move-category="down" aria-label="Descer ' + esc(label) + '">Descer</button></div></li>'
+    ).join('') + '</ol><span class="sr-only" role="status" data-menu-order-status></span>' + formEnd('Salvar ordem') + '</form>',store.name);
+  const form = $('#menu-order-form',el);
+  const list = $('ol',form);
+  function syncMoves() {
+    for (const row of list.children) {
+      $('[data-move-category=up]',row).disabled = !row.previousElementSibling;
+      $('[data-move-category=down]',row).disabled = !row.nextElementSibling;
+    }
+  }
+  list.onclick = event => {
+    const button = event.target.closest('[data-move-category]');
+    if (!button || button.disabled) return;
+    const row = button.closest('li');
+    if (button.dataset.moveCategory==='up') row.previousElementSibling.before(row);
+    else row.nextElementSibling.after(row);
+    syncMoves();
+    (button.disabled ? $('button:not(:disabled)',row) : button)?.focus({preventScroll:true});
+    $('[data-menu-order-status]',form).textContent = row.dataset.orderCategory + ' na posição ' + ([...list.children].indexOf(row)+1) + '.';
+  };
+  syncMoves();
+  bindSubmit(form,async () => {
+    const order = [...list.children].map(row=>row.dataset.orderCategory);
+    list.inert = true;
+    try { await command('save_menu_category_order',{store_id:store.id,order}); }
+    finally { list.inert = false; }
+    el.close();
+    toast('Ordem do cardápio salva.');
+    await done();
+  });
+}
+
 export function productForm(store, product, done) {
-  const allowedCategories = sortCategories([...(store.categories ?? [store.category]),...(store.menu_categories ?? [])]);
+  const allowedCategories = availableMenuCategories(store);
   const selectedCategory = allowedCategories.includes(product?.category) ? product.category : allowedCategories.length === 1 ? allowedCategories[0] : '';
   let photo = product?.image;
   let selectedFile;
@@ -293,7 +333,8 @@ export function storeMarkup(store, role, productsOnly = false) {
   }
   const actions = (productsOnly ? '' : '<button class="btn outline" data-settings="' + esc(store.id) + '">Foto e horários</button>' +
     (store.active || store.weekly_hours ? '<button class="btn outline" data-open="' + esc(store.id) + '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '')) +
-    '<button class="btn primary" data-add-product="' + esc(store.id) + '">' + icon('plus') + ' Produto</button>';
+    '<button class="btn primary" data-add-product="' + esc(store.id) + '">' + icon('plus') + ' Produto</button>' +
+    (productsOnly ? '<button class="btn outline" data-organize-categories="' + esc(store.id) + '">Organizar categorias</button>' : '');
   return '<article class="panel management-card"><div class="management-head"><div><span class="overline">' + labels +
     '</span><h3>' + esc(store.name) + '</h3></div><span class="status ' +
     (store.accepting_now ? 'status-delivered' : 'status-cancelled') + '">' +

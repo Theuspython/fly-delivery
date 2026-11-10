@@ -1,5 +1,5 @@
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
-  categories, sortCategories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
+  categories, sortCategories, sortMenuCategories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
 import { percentage } from './invoices.js';
 import { mealGroups,resolveMealSelection,mealChoicesMarkup } from './meal-choices.js';
 import { renderLiveMarkup } from './live-markup.js';
@@ -366,13 +366,15 @@ export function customer(context) {
   }
 
   function categoryTags(store,banner = false) {
+    const labels = banner ? menuLabels(store) : storeCategories(store);
     return '<div' + (banner ? ' tabindex="0"' : '') + ' role="group" aria-label="Categorias do estabelecimento, deslize para ver mais" class="store-category-tags' + (banner ? ' store-category-tags-banner' : '') + '">' +
-      storeCategories(store).map(label => '<span>' + esc(label) + '</span>').join('') + '</div>';
+      labels.map(label => '<span>' + esc(label) + '</span>').join('') + '</div>';
   }
 
   const menuCategoryLabel = label => label === 'uncategorized' ? 'Itens sem categoria' : label;
+  const menuLabels = store => sortMenuCategories([...(store.categories ?? [store.category]),...store.products.map(product=>product.category)],store.menu_category_order);
   function menuChoices(store) {
-    const labels = sortCategories([...storeCategories(store),...store.products.map(product=>product.category)]);
+    const labels = menuLabels(store);
     return [
       ['Todas','grid'],
       ...labels.map(label => [label,categories.find(([name])=>name===label)?.[1] || 'spark']),

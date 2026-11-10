@@ -8,6 +8,10 @@ export const categories = [
 const categoryOrder = new Map(categories.map(([name],index)=>[name,index]));
 export const sortCategories = values => [...new Set(values.filter(Boolean))].sort((a,b) =>
   (categoryOrder.get(a) ?? categories.length)-(categoryOrder.get(b) ?? categories.length) || a.localeCompare(b,'pt-BR'));
+export function sortMenuCategories(values, preferred = []) {
+  const available = sortCategories(values);
+  return [...new Set([...preferred.filter(label=>available.includes(label)),...available])];
+}
 export const money = value => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(value / 100);
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
