@@ -32,7 +32,7 @@ function cashCents(value) {
   const cents = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2,'0'));
   return cents <= 2147483647 ? cents : null;
 }
-const imageFor = (store, product) => product?.image || fallbackImages[store.category] || '/assets/bowl.webp';
+const imageFor = (store, product) => product?.image || store.image || fallbackImages[store.category] || '/assets/bowl.webp';
 const storeCategories = store => sortCategories(store.categories ?? [store.category]);
 const storePhoto = store => store.image || imageFor(store,store.products?.find(product => product.image));
 const deliveryTag = store => '<span' + (store.fee === 0 ? ' class="free-delivery" aria-label="Entrega grátis"' : '') + '>' +
@@ -329,9 +329,14 @@ export function customer(context) {
     if(!meals.valid)return null;
     return {key,product,options,mealSelections:meals.selections,mealGroups:meals.groups,size: size?.name ?? '',basePrice,quantity:cart.items[key],price:basePrice+options.reduce((sum,option)=>sum+option.price,0)};
   }
+  function cartProductLines(store,product) {
+    if (cart.store !== store.id) return [];
+    return Object.keys(cart.items).filter(key=>key.split(':',1)[0]===product.id)
+      .map(key=>cartLine(store,key)).filter(Boolean);
+  }
+
   function cartProductQuantity(store,product) {
-    if (cart.store !== store.id) return 0;
-    return Object.entries(cart.items).reduce((sum,[key,quantity]) => key.split(':',1)[0] === product.id ? sum+quantity : sum,0);
+    return cartProductLines(store,product).reduce((sum,line)=>sum+line.quantity,0);
   }
 
   function setItem(store, product, increment, ids = optionIds(product), size = productSize(product)?.name ?? '', selection = mealSelection(product,size)) {
@@ -340,9 +345,12 @@ export function customer(context) {
       return toast('A quantidade disponível deste item já foi atingida.');
     }
     const meals=resolveMealSelection(product,size,selection);
-    if(!meals.valid){toast(meals.reason);return;}
-    const key = lineKey(product,ids,size,meals.selections);
-    if (increment < 0 && (cart.store !== store.id || !cart.items[key])) return;
+    let key = meals.valid ? lineKey(product,ids,size,meals.selections) : null;
+    if (increment < 0) {
+      if (cart.store !== store.id) return;
+      if (!cart.items[key] && route().startsWith('loja/')) key = cartProductLines(store,product).at(-1)?.key;
+      if (!cart.items[key]) return;
+    } else if (!meals.valid) return toast(meals.reason);
     if (cart.store && cart.store !== store.id) {
       if (!window.confirm('Você tem itens de outra loja. Deseja começar um novo carrinho?')) return;
       cart = { store:store.id, items:{} };
@@ -607,7 +615,11 @@ export function customer(context) {
         return;
       }
       if (setItem(store,store.products.find(product => product.id === button.dataset.product),increment) && increment > 0) {
-        for (const details of card.querySelectorAll('details.product-options[open]')) details.open = false;
+        const expanded = card.querySelectorAll('details.product-options[open]');
+        for (const details of expanded) details.open = false;
+        if (expanded.length) requestAnimationFrame(() => {
+          if (card.isConnected) card.scrollIntoView({block:'start',behavior:'instant'});
+        });
       }
     };
     $('#menu-products').onchange = event => {
@@ -694,7 +706,7 @@ export function customer(context) {
             esc(menuCategoryLabel(group.label)) + '</h3>' + grid + '</section>' : grid);
           grids.set(group.label,showAll ? $('.products',root.lastElementChild) : root.lastElementChild);
         }
-        grids.get(group.label).insertAdjacentHTML('beforeend',slice.map(product => menuProductMarkup(product,showAll ? 'h4' : 'h3')).join(''));
+        grids.get(group.label).insertAdjacentHTML('beforeend',slice.map(product => menuProductMarkup(store,product,showAll ? 'h4' : 'h3')).join(''));
       }
       syncProductQuantities(store);
       followMenuScroll();
@@ -708,10 +720,10 @@ export function customer(context) {
     appendMenu(0,menuVisible);
   }
 
-  function menuProductMarkup(product,headingTag) {
+  function menuProductMarkup(store,product,headingTag) {
     return '<article class="product" data-menu-product="' + esc(product.id) + '"><div class="product-content"><div><' + headingTag + '>' + esc(product.name) + '</' + headingTag + '><p>' + esc(product.description) + '</p><strong>' +
       ((product.sizes ?? []).length ? 'A partir de ' : '') + money(product.price) + '</strong>' +
-      (product.available_stock === 0 ? '<span class="product-stock-out">Esgotado</span>' : '') + '</div>' + (product.image ? '<img src="' + esc(product.image) + '" alt="" loading="lazy">' : '') +
+      (product.available_stock === 0 ? '<span class="product-stock-out">Esgotado</span>' : '') + '</div><img src="' + esc(imageFor(store,product)) + '" alt="" loading="lazy">' +
       '</div>' + ((product.sizes ?? []).length ? '<fieldset class="product-sizes"><legend>Escolha o tamanho</legend><div>' + product.sizes.map(size=>
         '<label><input type="radio" name="size-' + esc(product.id) + '" data-size value="' + esc(size.name) + '"' + (productSize(product)?.name===size.name ? ' checked' : '') + '><span><b>' + esc(size.name) + '</b><small>' + money(size.price) + '</small></span></label>').join('') + '</div></fieldset>' : '') +
       '<details class="product-options product-accompaniments" data-product-accompaniments hidden><summary>Ver acompanhamentos</summary>' +
@@ -739,15 +751,16 @@ export function customer(context) {
         if(focused)mealContainer.querySelector('[data-meal-option="'+focused+'"]')?.focus({preventScroll:true});
       }
       const basePrice = size?.price ?? product.price;
-      const quantity = meals.valid && cart.store === store.id ? cart.items[lineKey(product,ids,size?.name,meals.selections)] ?? 0 : 0;
+      const quantity = cartProductQuantity(store,product);
+      const configuredQuantity = meals.valid && cart.store === store.id ? cart.items[lineKey(product,ids,size?.name,meals.selections)] ?? 0 : 0;
       const extra = (product.options ?? []).filter(option=>ids.includes(option.id)).reduce((sum,option)=>sum+option.price,0);
       $('[data-configured-price]',card).textContent = size || ids.length ? (size ? 'Tamanho ' + size.name + (ids.length ? ' com opcionais' : '') + ': ' : 'Unidade com opcionais: ') + money(basePrice+extra) : '';
       for (const input of card.querySelectorAll('[data-option],[data-size]')) input.disabled = !store.is_open;
       if(!store.is_open)for(const input of card.querySelectorAll('[data-meal-option],[data-clear-meal]'))input.disabled=true;
       $('[data-product-quantity]',card).textContent = quantity;
       $('[data-menu-delta="-1"]',card).disabled = quantity === 0;
-      const stockReached = product.available_stock != null && cartProductQuantity(store,product) >= product.available_stock;
-      $('[data-menu-delta="1"]',card).disabled = !store.is_open || quantity >= 25 || stockReached;
+      const stockReached = product.available_stock != null && quantity >= product.available_stock;
+      $('[data-menu-delta="1"]',card).disabled = !store.is_open || configuredQuantity >= 25 || stockReached;
     }
   }
 
