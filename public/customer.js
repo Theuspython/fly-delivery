@@ -363,6 +363,7 @@ export function customer(context) {
     if (route().startsWith('loja/')) syncProductQuantities(store);
     else render();
     if (increment > 0 && route().startsWith('loja/')) toast(product.name + ' no carrinho.');
+    return true;
   }
 
   function categoryTags(store,banner = false) {
@@ -605,7 +606,9 @@ export function customer(context) {
         summary.scrollIntoView({block:'nearest'});
         return;
       }
-      setItem(store,store.products.find(product => product.id === button.dataset.product),increment);
+      if (setItem(store,store.products.find(product => product.id === button.dataset.product),increment) && increment > 0) {
+        for (const details of card.querySelectorAll('details.product-options[open]')) details.open = false;
+      }
     };
     $('#menu-products').onchange = event => {
       const input = event.target.closest('[data-option],[data-size],[data-meal-option]');

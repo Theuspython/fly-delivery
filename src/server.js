@@ -427,7 +427,7 @@ async function api(req, res, url) {
     }
     const payload = action === 'customer_profile' && ('name' in input || 'phone' in input) ? profileFields(input) : input;
     const data = await upstream('/rest/v1/rpc/fd_api', { token: access, body: { action, input:payload } });
-    if (action==='save_store_profile' || action==='save_product') {
+    if (action==='save_store_profile' || action==='save_product' || action==='delete_product') {
       const {replaced_photo,...saved} = data;
       const key = menuPhotoKey(replaced_photo,action==='save_store_profile' ? input.id : input.store_id);
       if (key) await removePhoto('fly-delivery-menu',key,access);

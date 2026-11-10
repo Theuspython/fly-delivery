@@ -213,7 +213,8 @@ export function productForm(store, product, done) {
     ((product?.options ?? []).length ? ' checked' : '') + '> Este produto tem opcionais</label><div data-options-editor><p class="muted">O cliente pode escolher um ou mais adicionais. O valor é somado por unidade do produto.</p><div data-option-rows></div><button type="button" class="btn outline" data-add-option>Adicionar opcional</button></div></fieldset>' +
     (photo ? '<button class="text-button" type="button" data-remove-photo>Remover foto atual</button>' : '') +
     '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 50 KB.</p><label class="check"><input name="active" type="checkbox"' +
-    (product?.active !== false ? ' checked' : '') + '> Disponível no cardápio</label>' + formEnd('Salvar produto') + '</form>');
+    (product?.active !== false ? ' checked' : '') + '> Disponível no cardápio</label>' + formEnd('Salvar produto') + '</form>' +
+    (product ? '<div class="order-actions"><button class="btn outline danger-text" type="button" data-delete-product>Excluir produto</button></div>' : ''));
   const sizesEnabled = $('[name=has_sizes]',el);
   const stockEnabled = $('[name=tracks_stock]',el);
   const stockField = $('[name=stock_quantity]',el);
@@ -282,6 +283,17 @@ export function productForm(store, product, done) {
   };
   const remove = $('[data-remove-photo]',el);
   if (remove) remove.onclick = () => { photo = null; remove.textContent = 'Foto marcada para remoção'; remove.disabled = true; };
+  if (product) $('[data-delete-product]',el).onclick = () => {
+    const confirmation = modal('Excluir produto',
+      '<form class="form-stack" id="delete-product-form"><p>Deseja excluir <strong>' + esc(product.name) + '</strong> do cardápio?</p>' +
+      formEnd('Confirmar exclusão') + '</form>');
+    bindSubmit($('#delete-product-form',confirmation),async () => {
+      await command('delete_product',{store_id:store.id,id:product.id});
+      confirmation.close();
+      toast('Produto excluído.');
+      await done();
+    });
+  };
   bindSubmit($('#product-form',el), async data => {
     const creatingCategory = !categoryField.hidden;
     const category = productCategory();
