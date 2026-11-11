@@ -1,7 +1,7 @@
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, sortCategories, sortMenuCategories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
 import { percentage } from './invoices.js';
-import { mealGroups,resolveMealSelection,mealChoicesMarkup } from './meal-choices.js';
+import { mealGroups,resolveMealSelection,mealChoicesMarkup,syncMealChoices } from './meal-choices.js';
 import { renderLiveMarkup } from './live-markup.js';
 import { customerNotifications } from './customer-notifications.js';
 
@@ -607,9 +607,22 @@ export function customer(context) {
       menuGrid(store);
       if (pastFirstProducts) $('.menu-head').scrollIntoView?.({ block:'start' });
     };
-    $('#menu-products').onclick = event => {
+    const products = $('#menu-products');
+    products.addEventListener('toggle',event => {
+      if (event.target.matches('[data-product-accompaniments][open]')) {
+        syncProductQuantities(store,[event.target.closest('[data-menu-product]')]);
+      }
+    },true);
+    products.onclick = event => {
       const clear=event.target.closest('[data-clear-meal]');
-      if(clear){const card=clear.closest('[data-menu-product]'),product=store.products.find(p=>p.id===card.dataset.menuProduct),size=productSize(product)?.name??'';mealDrafts.set(product.id+':'+size,mealSelection(product,size).filter(group=>group.group_id!==clear.dataset.clearMeal));syncProductQuantities(store);return;}
+      if (clear) {
+        const card = clear.closest('[data-menu-product]');
+        const product = store.products.find(item=>item.id===card.dataset.menuProduct);
+        const size = productSize(product)?.name ?? '';
+        mealDrafts.set(product.id+':'+size,mealSelection(product,size).filter(group=>group.group_id!==clear.dataset.clearMeal));
+        syncProductQuantities(store,[card]);
+        return;
+      }
       const button = event.target.closest('[data-product]');
       if (!button) return;
       const increment = Number(button.dataset.menuDelta);
@@ -630,17 +643,22 @@ export function customer(context) {
         });
       }
     };
-    $('#menu-products').onchange = event => {
+    products.onchange = event => {
       const input = event.target.closest('[data-option],[data-size],[data-meal-option]');
       if (!input) return;
       const card = input.closest('[data-menu-product]');
       if (input.hasAttribute('data-size')) sizeDrafts.set(card.dataset.menuProduct,input.value);
       else if(input.hasAttribute('data-option')) optionDrafts.set(card.dataset.menuProduct,[...card.querySelectorAll('[data-option]:checked')].map(input=>input.dataset.option));
       else {
-        const product=store.products.find(p=>p.id===card.dataset.menuProduct),size=productSize(product)?.name??'';
-        mealDrafts.set(product.id+':'+size,mealGroups(product,size).map(group=>({group_id:group.id,option_ids:[...card.querySelectorAll('[data-meal-option]:checked')].filter(input=>input.dataset.mealGroup===group.id).map(input=>input.dataset.mealOption)})).filter(group=>group.option_ids.length));
+        const product = store.products.find(item=>item.id===card.dataset.menuProduct);
+        const size = productSize(product)?.name ?? '';
+        const group = input.closest('[data-meal-group]');
+        const selection = mealSelection(product,size).filter(choice=>choice.group_id!==group.dataset.mealGroup);
+        const ids = [...group.querySelectorAll('[data-meal-option]:checked')].map(option=>option.dataset.mealOption);
+        if (ids.length) selection.push({group_id:group.dataset.mealGroup,option_ids:ids});
+        mealDrafts.set(product.id+':'+size,selection);
       }
-      syncProductQuantities(store);
+      syncProductQuantities(store,[card]);
     };
     menuGrid(store);
     alignCategories(false,$('#menu-categories'));
@@ -748,19 +766,25 @@ export function customer(context) {
       icon('plus') + '</button></div></article>';
   }
 
-  function syncProductQuantities(store) {
-    for (const card of document.querySelectorAll('[data-menu-product]')) {
+  function syncProductQuantities(store,cards = document.querySelectorAll('[data-menu-product]')) {
+    for (const card of cards) {
       const product = store.products.find(product=>product.id===card.dataset.menuProduct);
       const ids = optionIds(product);
       const size = productSize(product);
-      const meals=resolveMealSelection(product,size?.name??'',mealSelection(product));
-      const mealContainer=$('[data-meal-choices]',card),mealMarkup=mealChoicesMarkup(product,size?.name??'',mealSelection(product));
+      const sizeName = size?.name ?? '';
+      const selection = mealSelection(product,sizeName);
+      const meals = resolveMealSelection(product,sizeName,selection);
+      const groups = mealGroups(product,sizeName);
+      const mealContainer = $('[data-meal-choices]',card);
       const accompaniments = mealContainer.parentElement;
-      accompaniments.hidden = !mealMarkup;
-      if (!mealMarkup) accompaniments.open = false;
-      if(mealContainer.innerHTML!==mealMarkup){
-        const focused=document.activeElement?.dataset.mealOption;mealContainer.innerHTML=mealMarkup;
-        if(focused)mealContainer.querySelector('[data-meal-option="'+focused+'"]')?.focus({preventScroll:true});
+      accompaniments.hidden = !groups.length;
+      if (!groups.length) accompaniments.open = false;
+      if (accompaniments.open) {
+        if (mealContainer.dataset.size !== sizeName) {
+          mealContainer.innerHTML = mealChoicesMarkup(product,groups,sizeName);
+          mealContainer.dataset.size = sizeName;
+        }
+        syncMealChoices(mealContainer,groups,sizeName,selection,!store.is_open);
       }
       const basePrice = size?.price ?? product.price;
       const quantity = cartProductQuantity(store,product);
@@ -768,7 +792,6 @@ export function customer(context) {
       const extra = (product.options ?? []).filter(option=>ids.includes(option.id)).reduce((sum,option)=>sum+option.price,0);
       $('[data-configured-price]',card).textContent = size || ids.length ? (size ? 'Tamanho ' + size.name + (ids.length ? ' com opcionais' : '') + ': ' : 'Unidade com opcionais: ') + money(basePrice+extra) : '';
       for (const input of card.querySelectorAll('[data-option],[data-size]')) input.disabled = !store.is_open;
-      if(!store.is_open)for(const input of card.querySelectorAll('[data-meal-option],[data-clear-meal]'))input.disabled=true;
       $('[data-product-quantity]',card).textContent = quantity;
       $('[data-menu-delta="-1"]',card).disabled = quantity === 0;
       const stockReached = product.available_stock != null && quantity >= product.available_stock;

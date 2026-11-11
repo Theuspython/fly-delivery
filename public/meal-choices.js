@@ -14,24 +14,45 @@ export function resolveMealSelection(product,size='',selection=[]) {
     const limit=Number(group.limits[size]);
     if(group.required&&!ids.length)return fail('Escolha uma opção em '+group.name+'.');
     if(ids.length>limit||new Set(ids).size!==ids.length)return fail('Escolha até '+limit+' opção/ões em '+group.name+'.');
-    const options=ids.map(id=>group.options.find(option=>option.id===id));
+    if(!ids.length)continue;
+    const available=new Map(group.options.map(option=>[option.id,option]));
+    const options=ids.map(id=>available.get(id));
     if(options.some(option=>!option))return fail('As escolhas de montagem mudaram. Volte ao cardápio.');
-    if(ids.length){
-      selections.push({group_id:group.id,option_ids:[...ids].sort()});
-      resolved.push({id:group.id,name:group.name,options});
-    }
+    selections.push({group_id:group.id,option_ids:[...ids].sort()});
+    resolved.push({id:group.id,name:group.name,options});
   }
   selections.sort((a,b)=>a.group_id.localeCompare(b.group_id));
   return {valid:true,selections,groups:resolved};
 }
 
-export function mealChoicesMarkup(product,size,selection) {
-  return mealGroups(product,size).map(group=>{
-    const ids=selection.find(selected=>selected.group_id===group.id)?.option_ids??[],limit=Number(group.limits[size]);
-    return '<fieldset class="meal-choices"><legend>'+esc(group.name)+'</legend><p class="muted">'+(group.required?'Obrigatório':'Opcional')+' · '+(limit===1?'Escolha 1':'Escolha até '+limit)+' · Sem acréscimo</p><div>'+group.options.map(option=>
-      '<label><input type="'+(limit===1?'radio':'checkbox')+'" name="meal-'+esc(product.id+'-'+group.id)+'" data-meal-group="'+esc(group.id)+'" data-meal-option="'+esc(option.id)+'"'+(ids.includes(option.id)?' checked':'')+(limit>1&&ids.length>=limit&&!ids.includes(option.id)?' disabled':'')+'><span>'+esc(option.name)+'</span></label>').join('')+'</div>'+
-      (!group.required&&ids.length?'<button type="button" class="text-button" data-clear-meal="'+esc(group.id)+'">Limpar escolha</button>':'')+'</fieldset>';
+export function mealChoicesMarkup(product,groups,size) {
+  return groups.map(group=>{
+    const limit=Number(group.limits[size]);
+    const scrollable=group.options.length>9;
+    return '<fieldset class="meal-choices"><legend>'+esc(group.name)+'</legend><p class="muted">'+
+      (group.required?'Obrigatório':'Opcional')+' · '+(limit===1?'Escolha 1':'Escolha até '+limit)+' · Sem acréscimo</p>'+
+      (scrollable?'<p class="muted">Role a lista para ver as '+group.options.length+' opções.</p>':'')+
+      '<div data-meal-group="'+esc(group.id)+'"'+(scrollable?' class="meal-options-scroll" tabindex="0" role="region" aria-label="Opções de '+esc(group.name)+'"':'')+'>'+
+      group.options.map(option=>'<label><input type="'+(limit===1?'radio':'checkbox')+'" name="meal-'+esc(product.id+'-'+group.id)+
+        '" data-meal-option="'+esc(option.id)+'"><span>'+esc(option.name)+'</span></label>').join('')+'</div>'+
+      (!group.required?'<button type="button" class="text-button" data-clear-meal="'+esc(group.id)+'" hidden>Limpar escolha</button>':'')+'</fieldset>';
   }).join('');
+}
+
+export function syncMealChoices(container,groups,size,selection,disabled) {
+  const selections=new Map(selection.map(group=>[group.group_id,new Set(group.option_ids)]));
+  for(const [index,group] of groups.entries()){
+    const fieldset=container.children[index];
+    const selected=selections.get(group.id);
+    const limit=Number(group.limits[size]);
+    const full=limit>1&&selected?.size>=limit;
+    for(const input of fieldset.querySelectorAll('[data-meal-option]')){
+      input.checked=selected?.has(input.dataset.mealOption)??false;
+      input.disabled=disabled||(full&&!input.checked);
+    }
+    const clear=$('[data-clear-meal]',fieldset);
+    if(clear){clear.hidden=!selected?.size;clear.disabled=disabled;}
+  }
 }
 
 export function createMealEditor(el,product,getSizes) {
@@ -69,7 +90,6 @@ export function createMealEditor(el,product,getSizes) {
         limit.max=String(maximum);
         limit.disabled=!active||!available||!enabledRule.checked;
       }
-      $('[data-add-meal-option]',row).disabled=!active||optionCount>=20;
     }
     $('[data-add-meal-group]',root).disabled=!active||rows.children.length>=8;
   }
