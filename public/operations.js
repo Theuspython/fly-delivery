@@ -102,7 +102,7 @@ function deleteStoreForm(store,done) {
 export function storeSettings(store,done) {
   let image = store.image;
   let uploadedFile;
-  const el = modal('Perfil da loja',
+  const el = modal('Foto, horários e entrega',
     '<form class="form-stack" id="store-form"><div class="store-settings-summary"><section class="panel"><h3>Foto da loja</h3><label>Foto ou logo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
     (image ? '<label class="check"><input name="remove_photo" type="checkbox"> Remover foto atual</label>' : '') +
     '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 50 KB.</p></section>' +
@@ -210,8 +210,8 @@ export function productForm(store, product, done) {
     '<fieldset class="size-editor"><legend>Tamanhos do produto</legend><label class="check"><input type="checkbox" name="has_sizes"' + (product?.sizes?.length ? ' checked' : '') + '> O item possui tamanhos diferentes</label><div data-sizes-editor><p class="muted">Marque os tamanhos disponíveis e informe o preço de cada um.</p><div class="size-editor-grid">' +
     ['P','M','G'].map(name=>{ const size=product?.sizes?.find(size=>size.name===name); return '<div><label class="check"><input type="checkbox" data-size-enabled="' + name + '"' + (!product?.sizes?.length || size ? ' checked' : '') + '> ' + name + '</label><label>Preço ' + name + ' (R$)<input data-size-price="' + name + '" type="number" min="0.01" max="10000" step="0.01" required value="' + (size ? size.price/100 : '') + '"></label></div>'; }).join('') +
     '</div></div></fieldset><fieldset class="meal-editor" data-meal-editor></fieldset>' +
-    '<fieldset class="optional-editor"><legend>Opcionais do produto</legend><label class="check"><input type="checkbox" name="has_options"' +
-    ((product?.options ?? []).length ? ' checked' : '') + '> Este produto tem opcionais</label><div data-options-editor><p class="muted">O cliente pode escolher um ou mais adicionais. O valor é somado por unidade do produto.</p><div data-option-rows></div><button type="button" class="btn outline" data-add-option>Adicionar opcional</button></div></fieldset>' +
+    '<fieldset class="optional-editor"><legend>Adicionais do produto</legend><label class="check"><input type="checkbox" name="has_options"' +
+    ((product?.options ?? []).length ? ' checked' : '') + '> Este produto tem adicionais</label><div data-options-editor><p class="muted">O cliente pode escolher um ou mais adicionais. O valor é somado por unidade do produto.</p><div data-option-rows></div><button type="button" class="btn outline" data-add-option>Adicionar adicional</button></div></fieldset>' +
     '<label class="check"><input name="active" type="checkbox"' +
     (product?.active !== false ? ' checked' : '') + '> Disponível no cardápio</label>' +
     '<label>Foto do produto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
@@ -249,9 +249,9 @@ export function productForm(store, product, done) {
     const row = document.createElement('div');
     row.className = 'optional-editor-row';
     row.dataset.optionId = option.id || crypto.randomUUID();
-    row.innerHTML = '<label>Nome do opcional<input data-option-name required maxlength="80" value="' + esc(option.name) + '" placeholder="Ex. Ovo"></label>' +
+    row.innerHTML = '<label>Nome do adicional<input data-option-name required maxlength="80" value="' + esc(option.name) + '" placeholder="Ex. Ovo"></label>' +
       '<label>Valor (R$)<input data-option-price type="number" min="0" max="10000" step="0.01" required value="' + (option.price != null ? option.price/100 : '') + '" placeholder="0,00"></label>' +
-      '<button type="button" class="icon-button" data-remove-option aria-label="Remover opcional">' + icon('close') + '</button>';
+      '<button type="button" class="icon-button" data-remove-option aria-label="Remover adicional">' + icon('close') + '</button>';
     rows.append(row);
   }
   function toggleOptions() {
@@ -311,7 +311,7 @@ export function productForm(store, product, done) {
     }) : [];
     if (sizesEnabled.checked && (!sizes.length || sizes.some(size=>!Number.isInteger(size.price) || size.price<1 || size.price>1000000))) throw new Error('Selecione pelo menos um tamanho e preencha os preços.');
     const options = enabled.checked ? [...rows.children].map(row=>({id:row.dataset.optionId,name:$('[data-option-name]',row).value.trim(),price:($('[data-option-price]',row).value.trim() ? Math.round(Number($('[data-option-price]',row).value)*100) : NaN)})) : [];
-    if (enabled.checked && (!options.length || options.some(option=>!option.name || !Number.isInteger(option.price) || option.price<0 || option.price>1000000))) throw new Error('Preencha o nome e o valor de cada opcional.');
+    if (enabled.checked && (!options.length || options.some(option=>!option.name || !Number.isInteger(option.price) || option.price<0 || option.price>1000000))) throw new Error('Preencha o nome e o valor de cada adicional.');
     const meal_choices=mealEditor.read();
     const previousStock = product?.stock_quantity ?? null;
     const stock = data.has('tracks_stock') && stockField.value !== '' ? Number(stockField.value) : null;
@@ -399,16 +399,15 @@ export function selectMerchantProductCategory(details,category) {
 function productListControls(store,{query='',category=''} = {}) {
   const labels = sortMenuCategories([...availableMenuCategories(store),...store.products.map(product=>product.category)],store.menu_category_order);
   if (store.products.some(product=>!product.category)) labels.push('uncategorized');
-  return '<div class="merchant-product-tools"><label class="search-field">' + icon('search') +
-    '<input type="search" data-product-search maxlength="100" value="' + esc(query) +
-    '" aria-label="Buscar produtos" placeholder="Buscar produto"></label>' +
+  return '<div class="merchant-product-tools"><div class="merchant-product-toolbar">' +
+    '<button type="button" class="btn primary" data-add-product="' + esc(store.id) + '">' + icon('plus') + ' Adicionar produto</button>' +
     '<details class="showcase-filters merchant-category-filter"><summary class="btn outline">' + icon('filter') +
     '<span data-category-label>' + esc(productCategoryLabel(category)) + '</span>' + icon('chevron') + '</summary>' +
     '<div class="showcase-filter-options" role="group" aria-label="Filtrar por categoria">' + ['',...labels].map(label =>
       '<button type="button" data-product-category="' + esc(label) + '" aria-pressed="' + (label===category) + '">' +
-      esc(productCategoryLabel(label)) + '</button>').join('') + '</div></details>' +
-    '<button type="button" class="icon-button" data-organize-products="' + esc(store.id) +
-    '" aria-label="Ordem dos produtos no cardápio" title="Ordem dos produtos no cardápio">' + icon('sort') + '</button></div>';
+      esc(productCategoryLabel(label)) + '</button>').join('') + '</div></details></div>' +
+    '<label class="search-field">' + icon('search') + '<input type="search" data-product-search maxlength="100" value="' + esc(query) +
+    '" aria-label="Buscar produtos" placeholder="Buscar produto"></label></div>';
 }
 
 export function storeMarkup(store, role, filters) {
@@ -421,13 +420,11 @@ export function storeMarkup(store, role, filters) {
       '<button class="btn outline" ' + (store.suspension?.suspended ? 'data-admin-resume' : 'data-admin-suspend') + '="' + esc(store.id) + '">' + (store.suspension?.suspended ? store.suspension.overdue_count ? 'Liberar por confiança' : 'Reativar' : 'Suspender') + '</button>' +
       (!store.owner_login ? '<button class="btn outline" data-link-store="' + esc(store.id) + '">Criar login</button>' : '') + '</div></article>';
   }
-  const actions = '<button class="btn primary" data-add-product="' + esc(store.id) + '">' + icon('plus') + ' Produto</button>' +
-    '<button class="btn outline" data-organize-categories="' + esc(store.id) + '">Organizar categorias</button>';
   return '<article class="panel management-card" data-product-shop="' + esc(store.id) + '"><div class="management-head"><div><span class="overline">' + labels +
     '</span><h3>' + esc(store.name) + '</h3></div><span class="status ' +
     (store.accepting_now ? 'status-delivered' : 'status-cancelled') + '">' +
     (store.active ? store.accepting_now ? 'Aberta agora' : 'Fechada agora' : 'Não publicada') + '</span></div>' +
-    '<div class="order-actions">' + actions + '</div>' + productListControls(store,filters) +
+    productListControls(store,filters) +
     '<div class="menu-admin" data-product-list aria-live="polite">' + merchantProductRows(store,filters) + '</div></article>';
 }
 

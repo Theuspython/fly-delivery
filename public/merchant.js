@@ -1,4 +1,4 @@
-import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast, sortCategories } from './shared.js';
+import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast } from './shared.js';
 import { invoicesMarkup, suspensionBanner } from './invoices.js';
 import { productForm, storeSettings, storeMarkup, organizeMenuCategories, organizeMenuProducts,
   merchantProductRows, selectMerchantProductCategory } from './operations.js';
@@ -13,7 +13,7 @@ const sections = [
   ['estoque','Estoque','bag'],
   ['financeiro','Financeiro','grid'],
   ['cupons','Cupons de desconto','tag'],
-  ['perfil','Perfil da loja','store']
+  ['perfil','Configurações do estabelecimento','store']
 ];
 const labels = Object.fromEntries(sections.map(([key,label]) => [key,label]));
 const dateLabel = value => value.split('-').reverse().join('/');
@@ -36,6 +36,28 @@ const cards = (orders,active = false,openOrderId = null) => '<div class="order-g
   orderCard(order,active ? actions(order) : '',{
     address:true,hideAddress:order.status==='placed'||order.address_hidden,progress:true,timeline:!active,compact:true,expanded:order.id === openOrderId
   })).join('') + '</div>';
+
+function storeSettingsMarkup(store) {
+  const storeId = esc(store.id);
+  const status = store.active ? store.accepting_now ? 'Aberta agora' : 'Fechada agora' : 'Não publicada';
+  const options = [
+    ['settings','camera','Foto, horários e entrega'],
+    ['organize-categories','grid','Organizar categorias'],
+    ['organize-products','sort','Ordem dos produtos no cardápio']
+  ];
+  return '<article class="panel merchant-profile"><div class="merchant-profile-header">' +
+    '<div class="merchant-profile-identity">' +
+    (store.image ? '<img class="merchant-profile-photo" src="' + esc(store.image) + '" alt="">' :
+      '<span class="merchant-profile-photo product-placeholder">' + icon('store') + '</span>') +
+    '<div><h2>' + esc(store.name) + '</h2><span class="status ' +
+    (store.accepting_now ? 'status-delivered' : 'status-cancelled') + '">' + status + '</span></div></div>' +
+    (store.active || store.weekly_hours ? '<button type="button" class="btn outline" data-open="' + storeId +
+      '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '') + '</div>' +
+    '<div class="merchant-settings-options">' + options.map(([action,symbol,label]) =>
+      '<button type="button" class="merchant-settings-option" data-' + action + '="' + storeId + '">' +
+      '<span class="merchant-settings-icon">' + icon(symbol) + '</span><strong>' + label + '</strong>' + icon('arrow') + '</button>'
+    ).join('') + '</div></article>';
+}
 
 function pagination(data) {
   if (data.pages <= 1) return '';
@@ -138,7 +160,8 @@ export function merchant(context) {
     drawer.innerHTML = '<div class="dialog-head"><div><span class="overline accent">FLY DELIVERY</span><h2 id="merchant-menu-title">Estabelecimento</h2></div>' +
       '<button class="icon-button" data-close-menu aria-label="Fechar menu">' + icon('close') + '</button></div>' +
       '<nav aria-label="Áreas do estabelecimento">' + sections.map(([key,label,symbol]) =>
-        '<a href="#' + key + '"' + (section() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) + label + '</a>').join('') +
+        '<a href="#' + key + '"' + (key === 'faturas' ? ' class="merchant-invoices-link"' : '') +
+        (section() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) + label + '</a>').join('') +
       (context.user?.role === 'merchant' ? '<button type="button" class="merchant-account-link" data-account>' + icon('person') + ' Minha conta</button>' : '') + '</nav>';
     drawer.showModal();
     $('[data-merchant-menu]')?.setAttribute('aria-expanded','true');
@@ -202,15 +225,10 @@ export function merchant(context) {
         const managed = await command('managed_stores');
         if (revision !== sequence || context.user !== user || currentSection !== section()) return;
         stores = managed;
-        markup = stores.length ? '<div class="management-grid' + (currentSection === 'produtos' ? ' merchant-product-grid' : '') + '">' + stores.map(store =>
+        markup = stores.length ? '<div class="management-grid ' +
+          (currentSection === 'produtos' ? 'merchant-product-grid' : 'merchant-settings-grid') + '">' + stores.map(store =>
           currentSection === 'produtos' ? storeMarkup(store,'merchant',productFilters.get(store.id)) :
-            '<article class="panel merchant-profile">' +
-            (store.image ? '<img src="' + esc(store.image) + '" alt="Foto de ' + esc(store.name) + '">' : '') +
-            '<h2>' + esc(store.name) + '</h2><p>' + esc(sortCategories(store.categories).join(' · ')) +
-            '</p><p class="muted">' + (store.active ? store.accepting_now ? 'Aberta agora' : 'Fechada agora' : 'Não publicada') + '</p>' +
-            '<div class="order-actions"><button class="btn primary" data-settings="' + esc(store.id) +
-            '">Foto, horários e entrega</button>' + (store.active || store.weekly_hours ? '<button class="btn outline" data-open="' + esc(store.id) +
-            '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '') + '</div></article>'
+            storeSettingsMarkup(store)
         ).join('') + '</div>' : '<div class="panel">' + empty('Nenhuma loja vinculada','A administração pode criar o acesso ao estabelecimento.','store') + '</div>';
       }
       if (revision !== sequence || context.user !== user || currentSection !== section() || !result?.isConnected) return;
