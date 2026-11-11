@@ -1,6 +1,7 @@
 import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast, sortCategories } from './shared.js';
 import { invoicesMarkup, suspensionBanner } from './invoices.js';
-import { productForm, storeSettings, storeMarkup, organizeMenuCategories } from './operations.js';
+import { productForm, storeSettings, storeMarkup, organizeMenuCategories, organizeMenuProducts,
+  merchantProductRows, selectMerchantProductCategory } from './operations.js';
 import { couponsMarkup, couponForm } from './promotions.js';
 import { renderLiveMarkup } from './live-markup.js';
 import { inventoryMarkup, adjustStockForm, createMerchantAlerts } from './inventory.js';
@@ -90,6 +91,9 @@ export function merchant(context) {
   let openOrderId = null;
   let queueFilter = 'placed';
   let activeOrders = [];
+  let queueIdentity = null;
+  const productFilters = new Map();
+  const pendingAvailability = new Set();
   let page = 0;
   let previousSection;
   let owner;
@@ -170,9 +174,17 @@ export function merchant(context) {
         const data = await command('merchant_invoices',{page});
         markup = invoicesMarkup(data) + pagination(data);
       } else if (currentSection === 'pedidos') {
-        const orders = await command('merchant_active_orders');
+        const [orders,identity] = await Promise.all([
+          command('merchant_active_orders'),
+          queueIdentity ?? command('merchant_store_identity').catch(() => null)
+        ]);
         if (revision !== sequence || context.user !== user || currentSection !== section()) return;
         activeOrders = orders;
+        queueIdentity = identity;
+        renderLiveMarkup($('#merchant-store-identity'),(identity ?? billingStatus.stores ?? []).map(shop =>
+          '<span class="merchant-store-identity">' + (shop.image ? '<img class="menu-admin-photo" src="' + esc(shop.image) + '" alt="">' :
+            '<span class="product-placeholder">' + icon('store') + '</span>') + '<strong>' + esc(shop.name) + '</strong></span>'
+        ).join(''));
         markup = queueMarkup();
       } else if (currentSection === 'financeiro') {
         const data = await command('merchant_finance',{ date_from:fromDate,date_to:toDate,page });
@@ -187,9 +199,11 @@ export function merchant(context) {
         coupons = saved;
         markup = couponsMarkup(stores,coupons);
       } else {
-        stores = await command('managed_stores');
-        markup = stores.length ? '<div class="management-grid">' + stores.map(store =>
-          currentSection === 'produtos' ? storeMarkup(store,'merchant',true) :
+        const managed = await command('managed_stores');
+        if (revision !== sequence || context.user !== user || currentSection !== section()) return;
+        stores = managed;
+        markup = stores.length ? '<div class="management-grid' + (currentSection === 'produtos' ? ' merchant-product-grid' : '') + '">' + stores.map(store =>
+          currentSection === 'produtos' ? storeMarkup(store,'merchant',productFilters.get(store.id)) :
             '<article class="panel merchant-profile">' +
             (store.image ? '<img src="' + esc(store.image) + '" alt="Foto de ' + esc(store.name) + '">' : '') +
             '<h2>' + esc(store.name) + '</h2><p>' + esc(sortCategories(store.categories).join(' · ')) +
@@ -222,11 +236,15 @@ export function merchant(context) {
       openOrderId = null;
       queueFilter = 'placed';
       activeOrders = [];
+      productFilters.clear();
     }
     const currentSection = section();
+    if (currentSection === 'pedidos') queueIdentity = null;
     if (previousSection !== currentSection) { page = 0; openOrderId = null; }
     previousSection = currentSection;
-    main.innerHTML = '<div class="wrap page merchant-workspace"><div class="section-head"><div><span class="overline accent">ESTABELECIMENTO</span>' +
+    const showStore = currentSection === 'pedidos' && context.user?.role === 'merchant';
+    main.innerHTML = '<div class="wrap page merchant-workspace"><div class="section-head"><div>' +
+      (showStore ? '<div id="merchant-store-identity"></div>' : '<span class="overline accent">ESTABELECIMENTO</span>') +
       '<h1>' + labels[currentSection] + '</h1></div></div><div id="merchant-body"></div></div>';
     const body = $('#merchant-body');
     if (context.user?.role !== 'merchant') {
@@ -277,6 +295,31 @@ export function merchant(context) {
       };
     }
     const result = $('#merchant-results');
+    function filterProducts(shop,panel,changes) {
+      const filters = {...productFilters.get(shop.id),...changes};
+      productFilters.set(shop.id,filters);
+      renderLiveMarkup($('[data-product-list]',panel),merchantProductRows(shop,filters));
+    }
+    if (currentSection === 'produtos') {
+      result.oninput = event => {
+        const input = event.target.closest('[data-product-search]');
+        if (!input) return;
+        const panel = input.closest('[data-product-shop]');
+        const shop = stores.find(item => item.id === panel.dataset.productShop);
+        if (shop) filterProducts(shop,panel,{query:input.value});
+      };
+      result.addEventListener('focusout',event => {
+        const details = event.target.closest('.merchant-category-filter[open]');
+        if (details && !details.contains(event.relatedTarget)) details.open = false;
+      });
+      result.addEventListener('keydown',event => {
+        const details = event.target.closest('.merchant-category-filter[open]');
+        if (event.key !== 'Escape' || !details) return;
+        event.preventDefault();
+        details.open = false;
+        $('summary',details).focus();
+      });
+    }
     result.addEventListener('click',event => {
       const filter = event.target.closest('[data-queue-filter]');
       if (filter) {
@@ -311,6 +354,14 @@ export function merchant(context) {
     else result.onclick = async event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
+      if ('productCategory' in button.dataset) {
+        const panel = button.closest('[data-product-shop]');
+        const shop = stores.find(item => item.id === panel.dataset.productShop);
+        const category = button.dataset.productCategory;
+        selectMerchantProductCategory(button.closest('details'),category);
+        if (shop) filterProducts(shop,panel,{category});
+        return;
+      }
       if (button.dataset.newCoupon || button.dataset.editCoupon || button.dataset.toggleCoupon) {
         const coupon = coupons.find(item => item.id === (button.dataset.editCoupon || button.dataset.toggleCoupon));
         const shop = stores.find(item => item.id === (button.dataset.newCoupon || coupon?.store_id));
@@ -337,8 +388,28 @@ export function merchant(context) {
         finally { if (button.isConnected) button.disabled = false; }
         return;
       }
-      const store = stores.find(item => item.id === (button.dataset.settings || button.dataset.open || button.dataset.addProduct || button.dataset.organizeCategories || button.dataset.store));
+      const store = stores.find(item => item.id === (button.dataset.settings || button.dataset.open || button.dataset.addProduct ||
+        button.dataset.organizeCategories || button.dataset.organizeProducts || button.dataset.store));
       const refreshInventory = async () => { await refresh(true); alerts.sync(); };
+      if (button.dataset.toggleProduct) {
+        const id = button.dataset.toggleProduct;
+        const product = store?.products.find(item => item.id === id);
+        if (!product || pendingAvailability.has(id)) return;
+        const panel = button.closest('[data-product-shop]');
+        pendingAvailability.add(id);
+        button.disabled = true;
+        try {
+          const saved = await command('set_product_availability',{store_id:store.id,id,active:!product.active});
+          const currentStore = stores.find(item => item.id === store.id);
+          const currentProduct = currentStore?.products.find(item => item.id === id);
+          if (currentProduct) currentProduct.active = saved.active;
+          if (currentProduct && panel.isConnected) filterProducts(currentStore,panel,{});
+          else if (section() === 'produtos' && context.user?.id === owner) await refresh(true);
+          toast(saved.active ? 'Produto disponível no cardápio.' : 'Produto indisponível no cardápio.');
+        } catch (error) { toast(error.message); }
+        finally { pendingAvailability.delete(id); button.disabled = false; }
+        return;
+      }
       if (button.dataset.adjustStock) {
         const product = store?.products.find(item => item.id === button.dataset.adjustStock);
         if (product) adjustStockForm(store,product,refreshInventory);
@@ -346,6 +417,7 @@ export function merchant(context) {
       }
       if (button.dataset.settings) storeSettings(store,() => refresh(true));
       if (button.dataset.organizeCategories) organizeMenuCategories(store,() => refresh(true));
+      if (button.dataset.organizeProducts) organizeMenuProducts(store,() => refresh(true));
       if (button.dataset.addProduct) productForm(store,null,refreshInventory);
       if (button.dataset.editProduct) productForm(store,store.products.find(item => item.id === button.dataset.editProduct),refreshInventory);
       if (button.dataset.page !== undefined) {

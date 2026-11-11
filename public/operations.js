@@ -4,6 +4,7 @@ import { percentage } from './invoices.js';
 import { createCommissionDashboard } from './admin-dashboard.js';
 import { mountHistoryCleanup } from './admin-history-cleanup.js';
 import { createMealEditor } from './meal-choices.js';
+import { normalize } from './catalog-search.js';
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, sortCategories, sortMenuCategories, empty } from './shared.js';
 
@@ -208,12 +209,14 @@ export function productForm(store, product, done) {
     (product?.stock_quantity ?? '') + '"></label></fieldset>' +
     '<fieldset class="size-editor"><legend>Tamanhos do produto</legend><label class="check"><input type="checkbox" name="has_sizes"' + (product?.sizes?.length ? ' checked' : '') + '> O item possui tamanhos diferentes</label><div data-sizes-editor><p class="muted">Marque os tamanhos disponíveis e informe o preço de cada um.</p><div class="size-editor-grid">' +
     ['P','M','G'].map(name=>{ const size=product?.sizes?.find(size=>size.name===name); return '<div><label class="check"><input type="checkbox" data-size-enabled="' + name + '"' + (!product?.sizes?.length || size ? ' checked' : '') + '> ' + name + '</label><label>Preço ' + name + ' (R$)<input data-size-price="' + name + '" type="number" min="0.01" max="10000" step="0.01" required value="' + (size ? size.price/100 : '') + '"></label></div>'; }).join('') +
-    '</div></div></fieldset><fieldset class="meal-editor" data-meal-editor></fieldset><label>Foto do produto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
+    '</div></div></fieldset><fieldset class="meal-editor" data-meal-editor></fieldset>' +
     '<fieldset class="optional-editor"><legend>Opcionais do produto</legend><label class="check"><input type="checkbox" name="has_options"' +
     ((product?.options ?? []).length ? ' checked' : '') + '> Este produto tem opcionais</label><div data-options-editor><p class="muted">O cliente pode escolher um ou mais adicionais. O valor é somado por unidade do produto.</p><div data-option-rows></div><button type="button" class="btn outline" data-add-option>Adicionar opcional</button></div></fieldset>' +
+    '<label class="check"><input name="active" type="checkbox"' +
+    (product?.active !== false ? ' checked' : '') + '> Disponível no cardápio</label>' +
+    '<label>Foto do produto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>' +
     (photo ? '<button class="text-button" type="button" data-remove-photo>Remover foto atual</button>' : '') +
-    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 50 KB.</p><label class="check"><input name="active" type="checkbox"' +
-    (product?.active !== false ? ' checked' : '') + '> Disponível no cardápio</label>' + formEnd('Salvar produto') + '</form>' +
+    '<p class="muted">JPG, PNG ou WebP, até 20 MB. A foto é salva com até 50 KB.</p>' + formEnd('Salvar produto') + '</form>' +
     (product ? '<div class="order-actions"><button class="btn outline danger-text" type="button" data-delete-product>Excluir produto</button></div>' : ''));
   const sizesEnabled = $('[name=has_sizes]',el);
   const stockEnabled = $('[name=tracks_stock]',el);
@@ -322,9 +325,11 @@ export function productForm(store, product, done) {
       photo = (await api('upload?store=' + encodeURIComponent(store.id),file)).url;
       selectedFile = file;
     }
+    const active = data.has('active');
     await command('save_product', { id:product?.id, store_id:store.id, name:data.get('name'),
       ...(creatingCategory ? {new_category:category} : {category}), description:data.get('description'),
-      price:sizes.length ? Math.min(...sizes.map(size=>size.price)) : Math.round(Number(data.get('price'))*100), active:data.has('active'),
+      price:sizes.length ? Math.min(...sizes.map(size=>size.price)) : Math.round(Number(data.get('price'))*100),
+      ...(!product || active !== product.active ? {active} : {}),
       ...(file?.size ? {image:photo} : remove?.disabled ? {image:null} : {}), options, sizes, meal_choices,...stockChange });
     el.close();
     toast('Produto salvo.');
@@ -332,7 +337,81 @@ export function productForm(store, product, done) {
   });
 }
 
-export function storeMarkup(store, role, productsOnly = false) {
+const productOrders = [
+  ['name','Nome (A–Z)'],
+  ['price_asc','Menor para maior preço'],
+  ['price_desc','Maior para menor preço']
+];
+
+export function organizeMenuProducts(store,done) {
+  const el = modal('Ordem dos produtos',
+    '<form class="form-stack" id="product-order-form"><p class="muted">A ordem vale dentro de cada categoria do cardápio. Para produtos com tamanhos, vale o menor preço cadastrado.</p>' +
+    '<fieldset class="size-editor"><legend>Como exibir os produtos</legend>' + productOrders.map(([value,label]) =>
+      '<label class="check"><input type="radio" name="order" value="' + value + '"' +
+      (value === (store.menu_product_order ?? 'name') ? ' checked' : '') + ' required> ' + label + '</label>'
+    ).join('') + '</fieldset>' + formEnd('Salvar ordem') + '</form>',store.name);
+  bindSubmit($('#product-order-form',el),async data => {
+    await command('save_menu_product_order',{store_id:store.id,order:data.get('order')});
+    el.close();
+    toast('Ordem dos produtos salva.');
+    await done();
+  });
+}
+
+const productCategoryLabel = value => value === '' ? 'Todas as categorias' : value === 'uncategorized' ? 'Sem categoria' : value;
+
+export function merchantProductRows(store,{query='',category=''} = {}) {
+  const terms = normalize(query).trim().split(/\s+/).filter(Boolean);
+  const products = store.products.filter(product => {
+    if (category && (product.category || 'uncategorized') !== category) return false;
+    const keywords = normalize([product.name,product.description,product.category].join(' '));
+    return terms.every(term => keywords.includes(term));
+  });
+  if (!products.length) return '<p class="muted">' + (store.products.length ?
+    'Nenhum produto encontrado com esses filtros.' : 'Nenhum produto cadastrado.') + '</p>';
+  return products.map(product => {
+    const name = esc(product.name);
+    const status = product.active ? 'Disponível' : 'Indisponível';
+    const id = esc(product.id);
+    const storeId = esc(store.id);
+    return '<div class="menu-admin-row" data-managed-product="' + id + '">' +
+      (product.image ? '<img class="menu-admin-photo" src="' + esc(product.image) + '" alt="" loading="lazy">' :
+        '<span class="product-placeholder">' + icon('bag') + '</span>') +
+      '<div class="menu-admin-info"><strong>' + name + '</strong><p>' + (product.sizes?.length ?
+        product.sizes.map(size=>esc(size.name) + ': ' + money(size.price)).join(' · ') : money(product.price)) +
+      ' · ' + esc(product.category || 'Categoria pendente') + '</p></div>' +
+      '<div class="menu-admin-actions"><button type="button" class="icon-button" data-edit-product="' + id + '" data-store="' + storeId +
+      '" aria-label="Editar ' + name + '" title="Editar produto">' + icon('pencil') + '</button>' +
+      '<button type="button" class="btn menu-availability" data-toggle-product="' + id + '" data-store="' + storeId +
+      '" aria-pressed="' + Boolean(product.active) + '" aria-label="' + status + ' · ' + name + '">' + status + '</button></div></div>';
+  }).join('');
+}
+
+export function selectMerchantProductCategory(details,category) {
+  $('[data-category-label]',details).textContent = productCategoryLabel(category);
+  for (const option of details.querySelectorAll('[data-product-category]')) {
+    option.setAttribute('aria-pressed',String(option.dataset.productCategory === category));
+  }
+  details.open = false;
+  $('summary',details).focus();
+}
+
+function productListControls(store,{query='',category=''} = {}) {
+  const labels = sortMenuCategories([...availableMenuCategories(store),...store.products.map(product=>product.category)],store.menu_category_order);
+  if (store.products.some(product=>!product.category)) labels.push('uncategorized');
+  return '<div class="merchant-product-tools"><label class="search-field">' + icon('search') +
+    '<input type="search" data-product-search maxlength="100" value="' + esc(query) +
+    '" aria-label="Buscar produtos" placeholder="Buscar produto"></label>' +
+    '<details class="showcase-filters merchant-category-filter"><summary class="btn outline">' + icon('filter') +
+    '<span data-category-label>' + esc(productCategoryLabel(category)) + '</span>' + icon('chevron') + '</summary>' +
+    '<div class="showcase-filter-options" role="group" aria-label="Filtrar por categoria">' + ['',...labels].map(label =>
+      '<button type="button" data-product-category="' + esc(label) + '" aria-pressed="' + (label===category) + '">' +
+      esc(productCategoryLabel(label)) + '</button>').join('') + '</div></details>' +
+    '<button type="button" class="icon-button" data-organize-products="' + esc(store.id) +
+    '" aria-label="Ordem dos produtos no cardápio" title="Ordem dos produtos no cardápio">' + icon('sort') + '</button></div>';
+}
+
+export function storeMarkup(store, role, filters) {
   const labels = esc(sortCategories(store.categories ?? [store.category]).join(' · '));
   if (role === 'admin') {
     return '<article class="panel management-card"><span class="overline">' + labels + '</span><h3>' + esc(store.name) +
@@ -342,20 +421,14 @@ export function storeMarkup(store, role, productsOnly = false) {
       '<button class="btn outline" ' + (store.suspension?.suspended ? 'data-admin-resume' : 'data-admin-suspend') + '="' + esc(store.id) + '">' + (store.suspension?.suspended ? store.suspension.overdue_count ? 'Liberar por confiança' : 'Reativar' : 'Suspender') + '</button>' +
       (!store.owner_login ? '<button class="btn outline" data-link-store="' + esc(store.id) + '">Criar login</button>' : '') + '</div></article>';
   }
-  const actions = (productsOnly ? '' : '<button class="btn outline" data-settings="' + esc(store.id) + '">Foto e horários</button>' +
-    (store.active || store.weekly_hours ? '<button class="btn outline" data-open="' + esc(store.id) + '">' + (store.is_open ? 'Pausar pedidos' : 'Ativar pedidos') + '</button>' : '')) +
-    '<button class="btn primary" data-add-product="' + esc(store.id) + '">' + icon('plus') + ' Produto</button>' +
-    (productsOnly ? '<button class="btn outline" data-organize-categories="' + esc(store.id) + '">Organizar categorias</button>' : '');
-  return '<article class="panel management-card"><div class="management-head"><div><span class="overline">' + labels +
+  const actions = '<button class="btn primary" data-add-product="' + esc(store.id) + '">' + icon('plus') + ' Produto</button>' +
+    '<button class="btn outline" data-organize-categories="' + esc(store.id) + '">Organizar categorias</button>';
+  return '<article class="panel management-card" data-product-shop="' + esc(store.id) + '"><div class="management-head"><div><span class="overline">' + labels +
     '</span><h3>' + esc(store.name) + '</h3></div><span class="status ' +
     (store.accepting_now ? 'status-delivered' : 'status-cancelled') + '">' +
     (store.active ? store.accepting_now ? 'Aberta agora' : 'Fechada agora' : 'Não publicada') + '</span></div>' +
-    '<div class="order-actions">' + actions + '</div><div class="menu-admin">' + (store.products.length ? store.products.map(product =>
-      '<div class="menu-admin-row">' + (product.image ? '<img src="' + esc(product.image) + '" alt="">' : '<span class="product-placeholder">' + icon('bag') + '</span>') +
-      '<div><strong>' + esc(product.name) + '</strong><p>' + (product.sizes?.length ? product.sizes.map(size=>esc(size.name) + ': ' + money(size.price)).join(' · ') : money(product.price)) +
-      ' · ' + esc(product.category || 'Categoria pendente') + ' · ' + (product.active ? 'Disponível' : 'Pausado') +
-      '</p></div><button class="btn outline" data-edit-product="' + esc(product.id) + '" data-store="' + esc(store.id) + '">Editar</button></div>').join('') :
-      '<p class="muted">Nenhum produto cadastrado.</p>') + '</div></article>';
+    '<div class="order-actions">' + actions + '</div>' + productListControls(store,filters) +
+    '<div class="menu-admin" data-product-list aria-live="polite">' + merchantProductRows(store,filters) + '</div></article>';
 }
 
 export function operations(page, context) {

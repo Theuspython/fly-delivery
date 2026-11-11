@@ -1,7 +1,8 @@
 // Compare generated markup, not HTML serialized by the browser (e.g. hidden="").
 // Reuse keyed cards and their decoded images when live data changes.
 const rendered=new WeakMap();
-const key=node=>node.nodeType===1?(node.getAttribute('data-order-id')||node.id||node.getAttribute('data-queue-filter')||''):'';
+const key=node=>node.nodeType===1?(node.getAttribute('data-order-id')||node.id||node.getAttribute('data-queue-filter')||
+  node.getAttribute('data-product-shop')||node.getAttribute('data-managed-product')||''):'';
 const compatible=(a,b)=>a?.nodeType===b.nodeType&&a.nodeName===b.nodeName;
 
 function patch(current,next) {

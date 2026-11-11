@@ -297,11 +297,15 @@ let catalogCache;
 let catalogRequest;
 function catalogSnapshot() {
   if (catalogCache && catalogCache.expires > Date.now()) return Promise.resolve(catalogCache.stores);
-  catalogRequest ??= upstream('/rest/v1/rpc/fd_api', {body:{action:'catalog',input:{}}}).then(stores => {
-    catalogCache = {stores,expires:Date.now()+4000};
+  if (catalogRequest) return catalogRequest;
+  const request = upstream('/rest/v1/rpc/fd_api', {body:{action:'catalog',input:{}}}).then(stores => {
+    if (catalogRequest === request) catalogCache = {stores,expires:Date.now()+4000};
     return stores;
-  }).finally(() => { catalogRequest = null; });
-  return catalogRequest;
+  }).finally(() => {
+    if (catalogRequest === request) catalogRequest = null;
+  });
+  catalogRequest = request;
+  return request;
 }
 
 async function api(req, res, url) {
@@ -427,6 +431,9 @@ async function api(req, res, url) {
     }
     const payload = action === 'customer_profile' && ('name' in input || 'phone' in input) ? profileFields(input) : input;
     const data = await upstream('/rest/v1/rpc/fd_api', { token: access, body: { action, input:payload } });
+    if (['set_product_availability','save_product','delete_product','save_menu_product_order','save_menu_category_order'].includes(action)) {
+      catalogCache = catalogRequest = null;
+    }
     if (action==='save_store_profile' || action==='save_product' || action==='delete_product') {
       const {replaced_photo,...saved} = data;
       const key = menuPhotoKey(replaced_photo,action==='save_store_profile' ? input.id : input.store_id);

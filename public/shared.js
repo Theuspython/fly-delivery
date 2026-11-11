@@ -29,6 +29,8 @@ export const fallbackImages = {
 const icons = {
   pin:'<path d="M20 10c0 5-8 11-8 11s-8-6-8-11a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
   search:'<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>',
+  pencil:'<path d="m13.5 6.5 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z"/>',
+  sort:'<path d="M8 19V5m-4 4 4-4 4 4m4-4v14m-4-4 4 4 4-4"/>',
   filter:'<path d="M4 6h16M7 12h10m-7 6h4"/><circle cx="8" cy="6" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/>',
   trend:'<path d="m4 17 6-6 4 4 6-8m-5 0h5v5"/>',
   star:'<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/>',

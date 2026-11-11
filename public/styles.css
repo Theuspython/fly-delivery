@@ -278,9 +278,32 @@ p { line-height:1.5 }
 .order-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:13px }
 .management-head { overflow-wrap:anywhere }
 .menu-admin { margin-top:12px }
-.menu-admin-row > div { flex:1 }
-.menu-admin-row img,.product-placeholder { width:42px; height:42px; border-radius:8px; object-fit:cover }
+.menu-admin-info { flex:1; min-width:0 }
+.menu-admin-photo,.product-placeholder { flex:none; width:42px; height:42px; border-radius:8px; object-fit:cover }
 .product-placeholder { display:grid; place-items:center; background:var(--soft); color:var(--orange) }
+.merchant-product-grid { grid-template-columns:minmax(0,1fr); }
+.merchant-product-tools { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto) auto; gap:8px; align-items:center; margin-top:16px; }
+.merchant-product-tools .search-field { min-width:0; }
+.merchant-product-tools .search-field input { width:100%; min-width:0; }
+.merchant-category-filter { min-width:0; max-width:190px; }
+.merchant-category-filter summary { min-height:42px; }
+.merchant-category-filter summary span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.merchant-category-filter summary .icon { flex:none; }
+.merchant-category-filter .showcase-filter-options { max-height:min(300px,50vh); overflow-y:auto; }
+.merchant-category-filter .showcase-filter-options button { overflow-wrap:anywhere; }
+.menu-admin-actions { display:flex; flex:none; align-items:center; gap:6px; }
+.menu-availability { min-height:42px; min-width:108px; justify-content:center; padding-inline:9px; font-size:.78rem; }
+.menu-availability[aria-pressed=true] { color:#176341; background:#e7f5ed; border-color:#b9ddc8; }
+.menu-availability[aria-pressed=false] { color:#922b1e; background:#fce7e2; border-color:#f1c4b9; }
+.menu-availability:hover:not(:disabled) { border-color:currentColor; }
+#merchant-store-identity { display:flex; flex-wrap:wrap; gap:8px 16px; }
+.merchant-store-identity { display:inline-flex; align-items:center; gap:9px; min-width:0; color:var(--ink); overflow-wrap:anywhere; }
+@media (max-width:480px) {
+  .merchant-product-tools { grid-template-columns:minmax(0,1fr) minmax(0,45%) auto; }
+  .merchant-category-filter summary { padding-inline:8px; gap:4px; }
+  .merchant-category-filter summary .icon:first-child { display:none; }
+  .menu-availability { min-width:0; padding-inline:8px; font-size:.73rem; }
+}
 .presence { align-items:center }
 .presence h2 { margin-bottom:6px }
 @media (max-width:1000px) {

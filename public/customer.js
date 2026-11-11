@@ -262,9 +262,17 @@ export function customer(context) {
   function alignCategories(smooth = true,list = $('#categories')) {
     const selected = list?.querySelector('[data-menu-active]') ?? list?.querySelector('[aria-pressed=true]');
     if (!selected) return;
-    const last = list.querySelector('.chip:last-child');
-    list.style.setProperty('--category-tail',Math.max(0,list.clientWidth - last.offsetWidth - 15) + 'px');
-    const left = selected.getBoundingClientRect().left - list.getBoundingClientRect().left + list.scrollLeft - 3;
+    const last = list.lastElementChild;
+    const penultimate = list.id === 'menu-categories' ? last.previousElementSibling : null;
+    const tail = penultimate ?? last;
+    list.style.setProperty('--category-tail',Math.max(0,list.clientWidth -
+      (last.getBoundingClientRect().right - tail.getBoundingClientRect().left) - 15) + 'px');
+    const origin = list.getBoundingClientRect().left - list.scrollLeft;
+    let left = selected.getBoundingClientRect().left - origin - 3;
+    if (selected === last && penultimate) {
+      left = Math.max(penultimate.getBoundingClientRect().left - origin - 3,
+        last.getBoundingClientRect().right - origin - list.clientWidth + 3);
+    }
     list.scrollTo({ left:selected === list.querySelector('.chip') ? 0 : Math.max(0,left),
       behavior:smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'instant' });
   }
@@ -678,6 +686,10 @@ export function customer(context) {
     for (const product of store.products) {
       const group = groups.get(product.category) ?? groups.get('uncategorized');
       group.products.push(product);
+    }
+    const direction = store.menu_product_order === 'price_asc' ? 1 : store.menu_product_order === 'price_desc' ? -1 : 0;
+    if (direction) for (const group of groups.values()) {
+      group.products.sort((a,b) => direction * (a.price - b.price));
     }
     const showAll = menuCategory === 'Todas';
     const visible = [...groups.values()].filter(group => group.products.length && (showAll || group.label === menuCategory));
