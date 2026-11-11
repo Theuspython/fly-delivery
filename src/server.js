@@ -431,7 +431,8 @@ async function api(req, res, url) {
     }
     const payload = action === 'customer_profile' && ('name' in input || 'phone' in input) ? profileFields(input) : input;
     const data = await upstream('/rest/v1/rpc/fd_api', { token: access, body: { action, input:payload } });
-    if (['set_product_availability','save_product','delete_product','save_menu_product_order','save_menu_category_order'].includes(action)) {
+    if (['set_product_availability','save_product','delete_product','save_menu_product_order','save_menu_category_order',
+      'merchant_delete_coupon'].includes(action)) {
       catalogCache = catalogRequest = null;
     }
     if (action==='save_store_profile' || action==='save_product' || action==='delete_product') {

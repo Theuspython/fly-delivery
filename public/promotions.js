@@ -55,7 +55,8 @@ export function couponsMarkup(stores, coupons) {
           '</p><p class="muted">' + (coupon.product_ids ? coupon.product_ids.length + ' produto(s) selecionado(s)' : 'Todos os produtos') +
           ' · ' + (coupon.enabled ? 'Habilitado' : 'Pausado') + '</p></div><div class="order-actions"><button class="btn outline" data-edit-coupon="' +
           esc(coupon.id) + '">Editar</button><button class="btn outline" data-toggle-coupon="' + esc(coupon.id) + '">' +
-          (coupon.enabled ? 'Pausar' : 'Ativar') + '</button></div></article>').join('') :
+          (coupon.enabled ? 'Pausar' : 'Ativar') + '</button><button type="button" class="btn outline danger-text" data-delete-coupon="' +
+          esc(coupon.id) + '">Excluir</button></div></article>').join('') :
         '<p class="muted">Nenhum cupom cadastrado.</p>') + '</section>';
     }).join('');
 }
@@ -95,5 +96,21 @@ export function couponForm(store, coupon, done) {
     if (form.isConnected) el.close();
     await done();
     toast('Cupom salvo.');
+  });
+}
+
+export function deleteCouponForm(store,coupon,done) {
+  const el = modal('Excluir cupom',
+    '<form class="form-stack" id="delete-coupon-form"><p>O cupom <strong>' + esc(coupon.code) +
+    '</strong> será excluído e o desconto deixará de valer em novos pedidos. Os descontos de pedidos já feitos ficam registrados.</p>' +
+    '<p class="form-error" data-form-error role="alert"></p><div class="order-actions">' +
+    '<button type="button" class="btn outline" data-close>Cancelar</button>' +
+    '<button type="submit" class="btn danger">Excluir cupom</button></div></form>',store.name);
+  const form = $('#delete-coupon-form',el);
+  bindSubmit(form,async () => {
+    await command('merchant_delete_coupon',{id:coupon.id,store_id:store.id});
+    if (form.isConnected) el.close();
+    await done();
+    toast('Cupom excluído.');
   });
 }

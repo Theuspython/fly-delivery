@@ -2,7 +2,7 @@ import { $, main, esc, icon, money, api, command, empty, orderCard, transitionBu
 import { invoicesMarkup, suspensionBanner } from './invoices.js';
 import { productForm, storeSettings, storeMarkup, organizeMenuCategories, organizeMenuProducts,
   merchantProductRows, selectMerchantProductCategory } from './operations.js';
-import { couponsMarkup, couponForm } from './promotions.js';
+import { couponsMarkup, couponForm, deleteCouponForm } from './promotions.js';
 import { renderLiveMarkup } from './live-markup.js';
 import { inventoryMarkup, adjustStockForm, createMerchantAlerts } from './inventory.js';
 
@@ -241,8 +241,15 @@ export function merchant(context) {
     }
   }
 
+  function closeProductCategoryFilters(event) {
+    for (const details of document.querySelectorAll('#merchant-results .merchant-category-filter[open]')) {
+      if (!details.contains(event.target)) details.open = false;
+    }
+  }
+
   function render() {
     clearInterval(timer);
+    document.removeEventListener('pointerdown',closeProductCategoryFilters);
     sequence++;
     busy = false;
     if (owner !== context.user?.id) {
@@ -326,10 +333,7 @@ export function merchant(context) {
         const shop = stores.find(item => item.id === panel.dataset.productShop);
         if (shop) filterProducts(shop,panel,{query:input.value});
       };
-      result.addEventListener('focusout',event => {
-        const details = event.target.closest('.merchant-category-filter[open]');
-        if (details && !details.contains(event.relatedTarget)) details.open = false;
-      });
+      document.addEventListener('pointerdown',closeProductCategoryFilters);
       result.addEventListener('keydown',event => {
         const details = event.target.closest('.merchant-category-filter[open]');
         if (event.key !== 'Escape' || !details) return;
@@ -380,11 +384,13 @@ export function merchant(context) {
         if (shop) filterProducts(shop,panel,{category});
         return;
       }
-      if (button.dataset.newCoupon || button.dataset.editCoupon || button.dataset.toggleCoupon) {
-        const coupon = coupons.find(item => item.id === (button.dataset.editCoupon || button.dataset.toggleCoupon));
-        const shop = stores.find(item => item.id === (button.dataset.newCoupon || coupon?.store_id));
+      const {newCoupon,editCoupon,toggleCoupon,deleteCoupon} = button.dataset;
+      if (newCoupon || editCoupon || toggleCoupon || deleteCoupon) {
+        const coupon = coupons.find(item => item.id === (editCoupon || toggleCoupon || deleteCoupon));
+        const shop = stores.find(item => item.id === (newCoupon || coupon?.store_id));
         if (!shop) return;
-        if (!button.dataset.toggleCoupon) return couponForm(shop,coupon,() => refresh(true));
+        if (deleteCoupon) return deleteCouponForm(shop,coupon,() => refresh(true));
+        if (!toggleCoupon) return couponForm(shop,coupon,() => refresh(true));
         button.disabled = true;
         try {
           await command('merchant_toggle_coupon',{ id:coupon.id,store_id:shop.id,enabled:!coupon.enabled });
@@ -456,6 +462,13 @@ export function merchant(context) {
     verifyReturn();
     if (['pedidos','faturas','estoque'].includes(currentSection)) timer = setInterval(() => { if (!document.hidden) refresh(); },6000);
   }
-  function stop() { clearInterval(timer); sequence++; busy = false; closeMenu(); alerts.stop(); }
+  function stop() {
+    clearInterval(timer);
+    document.removeEventListener('pointerdown',closeProductCategoryFilters);
+    sequence++;
+    busy = false;
+    closeMenu();
+    alerts.stop();
+  }
   return { render,openMenu,closeMenu,stop,openAlerts:alerts.open };
 }
