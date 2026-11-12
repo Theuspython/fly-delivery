@@ -718,7 +718,8 @@ p { line-height:1.5 }
 .meal-options-scroll:focus-visible { outline:2px solid var(--orange); outline-offset:2px; border-radius:6px; }
 .meal-choices label { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; align-content:center;
   gap:2px 9px; min-height:38px; padding-block:4px; font-size:.84rem; line-height:1.4; cursor:pointer; overflow-wrap:anywhere; }
-.meal-choice-description { grid-column:1/-1; color:var(--muted); font-size:.78rem; white-space:pre-line; }
+.meal-choices label > strong,.meal-choice-description { color:#000; }
+.meal-choice-description { grid-column:1/-1; font-size:.78rem; white-space:pre-line; }
 .meal-choices input { width:18px; height:18px; accent-color:var(--orange); }
 .meal-choices .text-button { margin-top:8px; font-size:.75rem; }
 .meal-selection-summary { display:flex; flex-wrap:wrap; align-content:start; gap:5px; max-block-size:7rem; overflow-y:auto;
