@@ -161,7 +161,8 @@ export function merchant(context) {
       '<button class="icon-button" data-close-menu aria-label="Fechar menu">' + icon('close') + '</button></div>' +
       '<nav aria-label="Áreas do estabelecimento">' + sections.map(([key,label,symbol]) =>
         '<a href="#' + key + '"' + (key === 'faturas' ? ' class="merchant-invoices-link"' : '') +
-        (section() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) + label + '</a>').join('') +
+        (section() === key ? ' aria-current="page"' : '') + '>' + icon(symbol) +
+        (key === 'faturas' ? 'Ver faturas Fly Delivery' : label) + '</a>').join('') +
       (context.user?.role === 'merchant' ? '<button type="button" class="merchant-account-link" data-account>' + icon('person') + ' Minha conta</button>' : '') + '</nav>';
     drawer.showModal();
     $('[data-merchant-menu]')?.setAttribute('aria-expanded','true');

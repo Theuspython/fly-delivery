@@ -1,7 +1,7 @@
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, sortCategories, sortMenuCategories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
 import { percentage } from './invoices.js';
-import { mealGroups,resolveMealSelection,mealChoicesMarkup,syncMealChoices } from './meal-choices.js';
+import { mealGroups,resolveMealSelection,mealChoicesMarkup,mealSelectionMarkup,syncMealChoices } from './meal-choices.js';
 import { renderLiveMarkup } from './live-markup.js';
 import { customerNotifications } from './customer-notifications.js';
 
@@ -758,6 +758,7 @@ export function customer(context) {
         '<label><input type="radio" name="size-' + esc(product.id) + '" data-size value="' + esc(size.name) + '"' + (productSize(product)?.name===size.name ? ' checked' : '') + '><span><b>' + esc(size.name) + '</b><small>' + money(size.price) + '</small></span></label>').join('') + '</div></fieldset>' : '') +
       '<details class="product-options product-accompaniments" data-product-accompaniments hidden><summary>Ver acompanhamentos</summary>' +
       '<div data-meal-choices></div><p class="muted">Toque em + para adicionar o produto com as escolhas feitas.</p></details>' +
+      '<ul class="meal-selection-summary" data-meal-selection-summary aria-label="Acompanhamentos escolhidos" aria-live="polite" tabindex="0" hidden></ul>' +
       ((product.options ?? []).length ? '<details class="product-options"><summary>Opcionais <span>' + product.options.length + ' disponíveis</span></summary><div class="option-choices">' +
         product.options.map(option=>'<label><input type="checkbox" data-option="' + esc(option.id) + '"' + (optionIds(product).includes(option.id)?' checked':'') + '><span>' + esc(option.name) + '</span><strong>+ ' + money(option.price) + '</strong></label>').join('') +
         '</div></details>' : '') + '<p class="configured-price" data-configured-price aria-live="polite"></p><div class="product-quantity"><button class="icon-button" data-product="' + esc(product.id) + '" data-menu-delta="-1" aria-label="Diminuir ' + esc(product.name) + '">' +
@@ -786,6 +787,10 @@ export function customer(context) {
         }
         syncMealChoices(mealContainer,groups,sizeName,selection,!store.is_open);
       }
+      const selectionSummary = $('[data-meal-selection-summary]',card);
+      const selectionMarkup = mealSelectionMarkup(groups,selection);
+      selectionSummary.hidden = !selectionMarkup;
+      renderLiveMarkup(selectionSummary,selectionMarkup);
       const basePrice = size?.price ?? product.price;
       const quantity = cartProductQuantity(store,product);
       const configuredQuantity = meals.valid && cart.store === store.id ? cart.items[lineKey(product,ids,size?.name,meals.selections)] ?? 0 : 0;

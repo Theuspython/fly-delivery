@@ -39,10 +39,19 @@ export function mealChoicesMarkup(product,groups,size) {
       group.options.map(option=>{
         const description=option.description?.trim();
         return '<label><input type="'+(limit===1?'radio':'checkbox')+'" name="meal-'+esc(product.id+'-'+group.id)+
-          '" data-meal-option="'+esc(option.id)+'"><span class="meal-choice-text"><span>'+esc(option.name)+'</span>'+
-          (description?'<em class="meal-choice-description">'+esc(description)+'</em>':'')+'</span></label>';
+          '" data-meal-option="'+esc(option.id)+'"><strong>'+esc(option.name)+'</strong>'+
+          (description?'<em class="meal-choice-description">'+esc(description)+'</em>':'')+'</label>';
       }).join('')+'</div>'+
       (!group.required?'<button type="button" class="text-button" data-clear-meal="'+esc(group.id)+'" hidden>Limpar escolha</button>':'')+'</fieldset>';
+  }).join('');
+}
+
+export function mealSelectionMarkup(groups,selection) {
+  if (!selection.length) return '';
+  const selectedByGroup = new Map(selection.map(group=>[group.group_id,new Set(group.option_ids)]));
+  return groups.flatMap(group=>{
+    const selected = selectedByGroup.get(group.id);
+    return selected ? group.options.filter(option=>selected.has(option.id)).map(option=>'<li>'+esc(option.name)+'</li>') : [];
   }).join('');
 }
 

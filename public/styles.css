@@ -716,13 +716,16 @@ p { line-height:1.5 }
 .meal-choices > div { display:grid; gap:7px; }
 .meal-options-scroll { max-block-size:calc(9 * 38px + 8 * 7px); overflow-y:auto; scrollbar-width:thin; padding-inline-end:5px; }
 .meal-options-scroll:focus-visible { outline:2px solid var(--orange); outline-offset:2px; border-radius:6px; }
-.meal-choices label { display:flex; align-items:center; gap:9px; min-height:38px; font-size:.84rem; line-height:1.4; cursor:pointer; overflow-wrap:anywhere; }
-.meal-choice-text { display:grid; gap:2px; min-width:0; padding-block:4px; }
-.meal-choice-description { color:var(--muted); font-size:.78rem; white-space:pre-line; }
-.meal-choices label:has(.meal-choice-description) { align-items:flex-start; }
-.meal-choices label:has(.meal-choice-description) input { margin-top:5px; }
-.meal-choices input { width:18px; height:18px; flex:none; accent-color:var(--orange); }
+.meal-choices label { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; align-content:center;
+  gap:2px 9px; min-height:38px; padding-block:4px; font-size:.84rem; line-height:1.4; cursor:pointer; overflow-wrap:anywhere; }
+.meal-choice-description { grid-column:1/-1; color:var(--muted); font-size:.78rem; white-space:pre-line; }
+.meal-choices input { width:18px; height:18px; accent-color:var(--orange); }
 .meal-choices .text-button { margin-top:8px; font-size:.75rem; }
+.meal-selection-summary { display:flex; flex-wrap:wrap; align-content:start; gap:5px; max-block-size:7rem; overflow-y:auto;
+  scrollbar-width:thin; list-style:none; margin:0; padding:0; }
+.meal-selection-summary[hidden] { display:none; }
+.meal-selection-summary li { max-width:100%; padding:4px 8px; border-radius:9px; background:var(--soft);
+  color:var(--orange); font-size:.76rem; font-weight:700; overflow-wrap:anywhere; }
 .meal-summary { display:block; font-size:.78rem; line-height:1.5; overflow-wrap:anywhere; color:var(--muted); margin-top:6px; }
 .meal-summary > span,.meal-summary > small { display:block; }
 @media (max-width:420px) {
