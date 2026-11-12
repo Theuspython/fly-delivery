@@ -1,5 +1,7 @@
 import { $,esc,icon } from './shared.js';
 
+const descriptionLimit = 200;
+
 export const mealGroups=(product,size='')=>(product.meal_choices??[]).filter(group=>Number(group.limits?.[size])>0);
 export function resolveMealSelection(product,size='',selection=[]) {
   const fail=reason=>({valid:false,reason,selections:[],groups:[]});
@@ -28,13 +30,18 @@ export function resolveMealSelection(product,size='',selection=[]) {
 export function mealChoicesMarkup(product,groups,size) {
   return groups.map(group=>{
     const limit=Number(group.limits[size]);
-    const scrollable=group.options.length>9;
+    const longList=group.options.length>9;
+    const scrollable=longList||(group.options.length>1&&group.options.some(option=>option.description?.trim()));
     return '<fieldset class="meal-choices"><legend>'+esc(group.name)+'</legend><p class="muted">'+
       (group.required?'Obrigatório':'Opcional')+' · '+(limit===1?'Escolha 1':'Escolha até '+limit)+' · Sem acréscimo</p>'+
-      (scrollable?'<p class="muted">Role a lista para ver as '+group.options.length+' opções.</p>':'')+
+      (longList?'<p class="muted">Role a lista para ver as '+group.options.length+' opções.</p>':'')+
       '<div data-meal-group="'+esc(group.id)+'"'+(scrollable?' class="meal-options-scroll" tabindex="0" role="region" aria-label="Opções de '+esc(group.name)+'"':'')+'>'+
-      group.options.map(option=>'<label><input type="'+(limit===1?'radio':'checkbox')+'" name="meal-'+esc(product.id+'-'+group.id)+
-        '" data-meal-option="'+esc(option.id)+'"><span>'+esc(option.name)+'</span></label>').join('')+'</div>'+
+      group.options.map(option=>{
+        const description=option.description?.trim();
+        return '<label><input type="'+(limit===1?'radio':'checkbox')+'" name="meal-'+esc(product.id+'-'+group.id)+
+          '" data-meal-option="'+esc(option.id)+'"><span class="meal-choice-text"><span>'+esc(option.name)+'</span>'+
+          (description?'<em class="meal-choice-description">'+esc(description)+'</em>':'')+'</span></label>';
+      }).join('')+'</div>'+
       (!group.required?'<button type="button" class="text-button" data-clear-meal="'+esc(group.id)+'" hidden>Limpar escolha</button>':'')+'</fieldset>';
   }).join('');
 }
@@ -61,7 +68,14 @@ export function createMealEditor(el,product,getSizes) {
   const enabled=$('[data-has-meal]',root),rows=$('[data-meal-groups]',root);
   function addOption(group,option={}){
     const row=document.createElement('div');row.className='meal-editor-option';row.dataset.mealOptionId=option.id||crypto.randomUUID();
-    row.innerHTML='<input data-meal-option-name aria-label="Nome da escolha gratuita" required maxlength="60" placeholder="Ex.: arroz branco" value="'+esc(option.name)+'"><button type="button" class="icon-button" data-remove-meal-option aria-label="Remover escolha">'+icon('close')+'</button>';
+    const descriptionId='meal-description-'+esc(group.dataset.mealGroupId+'-'+row.dataset.mealOptionId);
+    const description=option.description?.trim()??'';
+    row.innerHTML='<input data-meal-option-name aria-label="Nome da escolha gratuita" required maxlength="60" placeholder="Ex.: arroz branco" value="'+esc(option.name)+'">'+
+      '<button type="button" class="icon-button" data-toggle-meal-description aria-label="Descrição da escolha" title="Descrição da escolha" aria-expanded="false" aria-controls="'+descriptionId+'"'+
+      (description?' data-has-description':'')+'>'+icon('pencil')+'<span>Descrição</span></button>'+
+      '<button type="button" class="icon-button" data-remove-meal-option aria-label="Remover escolha">'+icon('close')+'</button>'+
+      '<label class="meal-editor-description" id="'+descriptionId+'" hidden><span>Descrição <small class="muted">(opcional)</small></span>'+
+      '<textarea data-meal-description rows="2" maxlength="'+descriptionLimit+'" placeholder="Ex.: Carne de boi temperada com alho e ervas">'+esc(description)+'</textarea></label>';
     $('[data-meal-option-rows]',group).append(row);
   }
   function addGroup(group){
@@ -76,7 +90,7 @@ export function createMealEditor(el,product,getSizes) {
   function sync(){
     const active=enabled.checked,sizes=getSizes();
     $('[data-meal-groups-editor]',root).hidden=!active;
-    for(const input of root.querySelectorAll('input,button'))input.disabled=!active;
+    for(const input of root.querySelectorAll('input,button,textarea'))input.disabled=!active;
     enabled.disabled=false;
     for(const row of rows.children){
       const optionCount=$('[data-meal-option-rows]',row).children.length;
@@ -96,6 +110,11 @@ export function createMealEditor(el,product,getSizes) {
   for(const group of product?.meal_choices??[])addGroup(group);
   enabled.onchange=()=>{if(enabled.checked&&!rows.children.length)addGroup();sync();};
   root.addEventListener('change',sync);
+  root.addEventListener('input',event=>{
+    const field=event.target.closest('[data-meal-description]');
+    if(field)$('[data-toggle-meal-description]',field.closest('[data-meal-option-id]'))
+      .toggleAttribute('data-has-description',Boolean(field.value.trim()));
+  });
   root.onclick=event=>{
     const button=event.target.closest('button');if(!button||button.disabled)return;
     const group=button.closest('[data-meal-group-id]');
@@ -103,13 +122,24 @@ export function createMealEditor(el,product,getSizes) {
     if(button.hasAttribute('data-remove-meal-group')){group.remove();sync();}
     if(button.hasAttribute('data-add-meal-option')){addOption(group);sync();$('[data-meal-option-rows]',group).lastElementChild.querySelector('input').focus();}
     if(button.hasAttribute('data-remove-meal-option')){button.closest('[data-meal-option-id]').remove();sync();}
+    if(button.hasAttribute('data-toggle-meal-description')){
+      const field=$('[data-meal-description]',button.closest('[data-meal-option-id]'));
+      const label=field.parentElement;
+      label.hidden=!label.hidden;
+      button.setAttribute('aria-expanded',String(!label.hidden));
+      if(!label.hidden)field.focus();
+    }
   };
   function read(){
     if(!enabled.checked)return [];
     if(!rows.children.length)throw new Error('Adicione pelo menos um grupo de montagem.');
     return [...rows.children].map(row=>{
       const name=$('[data-meal-group-name]',row).value.trim();
-      const options=[...$('[data-meal-option-rows]',row).children].map(option=>({id:option.dataset.mealOptionId,name:$('[data-meal-option-name]',option).value.trim()}));
+      const options=[...$('[data-meal-option-rows]',row).children].map(option=>{
+        const description=$('[data-meal-description]',option).value.trim();
+        if(description.length>descriptionLimit)throw new Error('Use até '+descriptionLimit+' caracteres na descrição do acompanhamento.');
+        return {id:option.dataset.mealOptionId,name:$('[data-meal-option-name]',option).value.trim(),...(description?{description}:{})};
+      });
       const limits=Object.fromEntries([...row.querySelectorAll('[data-meal-rule]')].filter(rule=>!rule.hidden&&$('[data-meal-rule-enabled]',rule).checked).map(rule=>[rule.dataset.mealRule,Number($('[data-meal-rule-limit]',rule).value)]));
       if(name.length<2||!options.length||options.some(option=>!option.name)||new Set(options.map(option=>option.name.toLowerCase())).size!==options.length||!Object.keys(limits).length||Object.values(limits).some(limit=>!Number.isInteger(limit)||limit<1||limit>options.length))throw new Error('Revise o grupo '+(name||'de montagem')+': informe as opções, os tamanhos e os limites de escolhas.');
       return {id:row.dataset.mealGroupId,name,required:$('[data-meal-required]',row).checked,limits,options};

@@ -703,7 +703,12 @@ p { line-height:1.5 }
 .meal-editor-limits label { font-size:.73rem; }
 .meal-editor-limits input[type=number] { min-width:0; width:100%; }
 [data-meal-option-rows] { display:grid; gap:8px; }
-.meal-editor-option { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }
+.meal-editor-option { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:center; }
+.meal-editor-option [data-toggle-meal-description] { gap:6px; font-size:.78rem; font-weight:700; }
+.meal-editor-option [data-toggle-meal-description] .icon { width:17px; height:17px; }
+.meal-editor-option [data-has-description],.meal-editor-option [aria-expanded=true] { color:var(--orange); background:var(--soft); border-color:#edcbbd; }
+.meal-editor-description { grid-column:1/-1; }
+.meal-editor-description textarea { resize:vertical; }
 .meal-editor .text-button { text-align:left; font-size:.8rem; }
 .meal-choices { border:1px solid var(--line); border-radius:12px; padding:12px; margin:0 0 12px; min-width:0; }
 .meal-choices legend { font-size:.9rem; font-weight:800; padding:0 5px; overflow-wrap:anywhere; }
@@ -712,12 +717,18 @@ p { line-height:1.5 }
 .meal-options-scroll { max-block-size:calc(9 * 38px + 8 * 7px); overflow-y:auto; scrollbar-width:thin; padding-inline-end:5px; }
 .meal-options-scroll:focus-visible { outline:2px solid var(--orange); outline-offset:2px; border-radius:6px; }
 .meal-choices label { display:flex; align-items:center; gap:9px; min-height:38px; font-size:.84rem; line-height:1.4; cursor:pointer; overflow-wrap:anywhere; }
-.meal-choices label > span { min-width:0; }
+.meal-choice-text { display:grid; gap:2px; min-width:0; padding-block:4px; }
+.meal-choice-description { color:var(--muted); font-size:.78rem; white-space:pre-line; }
+.meal-choices label:has(.meal-choice-description) { align-items:flex-start; }
+.meal-choices label:has(.meal-choice-description) input { margin-top:5px; }
 .meal-choices input { width:18px; height:18px; flex:none; accent-color:var(--orange); }
 .meal-choices .text-button { margin-top:8px; font-size:.75rem; }
 .meal-summary { display:block; font-size:.78rem; line-height:1.5; overflow-wrap:anywhere; color:var(--muted); margin-top:6px; }
 .meal-summary > span,.meal-summary > small { display:block; }
-@media (max-width:420px) { .meal-editor-limits { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:420px) {
+  .meal-editor-limits { grid-template-columns:minmax(0,1fr); }
+  .meal-editor-option [data-toggle-meal-description] > span { display:none; }
+}
 .size-editor-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; margin-top:12px; }
 .size-editor-grid > div { min-width:0; }
 .size-editor-grid > div > label:first-child { margin-bottom:8px; }
