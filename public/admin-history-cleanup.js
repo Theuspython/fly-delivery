@@ -13,9 +13,9 @@ const countsMarkup = result => '<dl class="cleanup-counts">' + [
 function retainedMarkup(result) {
   const retained = result.retained ?? {};
   const reasons = [
-    [retained.not_delivered,'pedido sem status de entregue','pedidos sem status de entregue'],
-    [retained.outside_invoice_day,'pedido entregue em outra data','pedidos entregues em outra data'],
-    [retained.without_paid_invoice,'pedido entregue sem fatura quitada','pedidos entregues sem fatura quitada'],
+    [retained.not_delivered,'pedido ainda em andamento','pedidos ainda em andamento'],
+    [retained.outside_invoice_day,'pedido fora da data da fatura','pedidos fora da data da fatura'],
+    [retained.without_paid_invoice,'pedido finalizado sem fatura quitada','pedidos finalizados sem fatura quitada'],
     [retained.outside_billed_orders,'pedido fora do fechamento da fatura','pedidos fora do fechamento da fatura'],
     [retained.pending_invoices,'fatura pendente no período','faturas pendentes no período']
   ].filter(([count])=>count>0);
@@ -25,7 +25,7 @@ function retainedMarkup(result) {
 
 export function mountHistoryCleanup(root) {
   root.innerHTML = '<section class="panel history-cleanup"><div class="section-head"><h2>Selecionar período</h2></div>' +
-    '<p class="muted">A limpeza remove faturas quitadas e os pedidos entregues que fazem parte delas. O histórico dos clientes e os relatórios passam a refletir os registros que permanecerem no sistema.</p>' +
+    '<p class="muted">A limpeza remove faturas quitadas quando todos os pedidos da fatura estão finalizados. O histórico dos clientes e os relatórios passam a refletir os registros que permanecerem no sistema.</p>' +
     '<form class="form-stack" data-cleanup-form><label>Período<select name="period">' +
     periods.map(([value,label])=>'<option value="'+value+'">'+label+'</option>').join('')+'</select></label>' +
     '<div class="fields-two" data-cleanup-dates hidden><label data-cleanup-start>Data inicial<input type="date" name="from"></label>' +
@@ -52,7 +52,7 @@ export function mountHistoryCleanup(root) {
     from.required = custom;
     to.required = range;
     $('[data-cleanup-hint]',form).textContent = custom
-      ? 'O filtro usa a data da fatura, que acompanha o dia da entrega, pelo horário de Brasília. As duas datas do intervalo estão incluídas.'
+      ? 'O filtro usa a data registrada na fatura, pelo horário de Brasília. As duas datas do intervalo estão incluídas.'
       : 'O filtro usa a data de pagamento da fatura, pelo horário de Brasília.';
     revision++;
     output.hidden = true;

@@ -425,8 +425,8 @@ p { line-height:1.5 }
 .merchant-drawer nav { display:grid; gap:7px; margin-top:25px; }
 .merchant-drawer nav a,.merchant-drawer nav button { display:flex; align-items:center; gap:10px; padding:13px 12px; border-radius:11px; font-weight:800; font-size:.94rem; }
 .merchant-drawer nav a:hover,.merchant-drawer nav button:hover,.merchant-drawer nav a[aria-current=page] { color:var(--orange); background:var(--soft); }
-.merchant-drawer nav a.merchant-invoices-link { color:white; background:var(--orange); }
-.merchant-drawer nav a.merchant-invoices-link:hover,.merchant-drawer nav a.merchant-invoices-link[aria-current=page] { color:white; background:#a92d0c; }
+.merchant-drawer nav a.merchant-invoices-link { color:white; background:var(--green); }
+.merchant-drawer nav a.merchant-invoices-link:hover,.merchant-drawer nav a.merchant-invoices-link[aria-current=page] { color:white; background:#124b35; }
 .merchant-drawer .icon { width:19px; height:19px; }
 .merchant-workspace h1 { font-size:clamp(2rem,4vw,3rem); margin:6px 0 8px; }
 .merchant-workspace h2 { font-size:1.4rem; }
@@ -714,7 +714,8 @@ p { line-height:1.5 }
 .meal-choices legend { font-size:.9rem; font-weight:800; padding:0 5px; overflow-wrap:anywhere; }
 .meal-choices > p { font-size:.72rem; margin:0 0 9px; }
 .meal-choices > div { display:grid; gap:7px; }
-.meal-options-scroll { max-block-size:calc(9 * 38px + 8 * 7px); overflow-y:auto; scrollbar-width:thin; padding-inline-end:5px; }
+.meal-options-scroll { max-block-size:calc(6 * 38px + 5 * 7px); overflow-y:auto; scrollbar-width:thin; padding-inline-end:5px; }
+.meal-options-scroll[data-touch-scroll] { overscroll-behavior-y:contain; }
 .meal-options-scroll:focus-visible { outline:2px solid var(--orange); outline-offset:2px; border-radius:6px; }
 .meal-choices label { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; align-content:center;
   gap:2px 9px; min-height:38px; padding-block:4px; font-size:.84rem; line-height:1.4; cursor:pointer; overflow-wrap:anywhere; }

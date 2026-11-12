@@ -30,7 +30,7 @@ export function resolveMealSelection(product,size='',selection=[]) {
 export function mealChoicesMarkup(product,groups,size) {
   return groups.map(group=>{
     const limit=Number(group.limits[size]);
-    const longList=group.options.length>9;
+    const longList=group.options.length>6;
     const scrollable=longList||(group.options.length>1&&group.options.some(option=>option.description?.trim()));
     return '<fieldset class="meal-choices"><legend>'+esc(group.name)+'</legend><p class="muted">'+
       (group.required?'Obrigatório':'Opcional')+' · '+(limit===1?'Escolha 1':'Escolha até '+limit)+' · Sem acréscimo</p>'+
@@ -44,6 +44,51 @@ export function mealChoicesMarkup(product,groups,size) {
       }).join('')+'</div>'+
       (!group.required?'<button type="button" class="text-button" data-clear-meal="'+esc(group.id)+'" hidden>Limpar escolha</button>':'')+'</fieldset>';
   }).join('');
+}
+
+function passScrollAtBoundary(list,delta,event,touch=false) {
+  const maximum = list.scrollHeight - list.clientHeight;
+  if (maximum <= 0 || !delta) return;
+  const position = Math.max(0,Math.min(maximum,list.scrollTop));
+  const next = Math.max(0,Math.min(maximum,position+delta));
+  const remainder = delta - (next-position);
+  if (Math.abs(remainder) < 1) return;
+  if (event.cancelable) {
+    event.preventDefault();
+    list.scrollTop = next;
+  } else if (!touch || Math.abs(next-position) >= 1) return;
+  window.scrollBy(0,remainder);
+}
+
+export function bindMealOptionsScroll(container) {
+  for (const list of container.querySelectorAll('.meal-options-scroll')) {
+    list.addEventListener('wheel',event=>{
+      if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX)>Math.abs(event.deltaY)) return;
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? list.clientHeight : 1;
+      passScrollAtBoundary(list,event.deltaY*unit,event);
+    },{passive:false});
+
+    if (!window.CSS?.supports('overscroll-behavior-y','contain')) continue;
+    let touch;
+    const resetTouch = () => { touch=undefined; list.removeAttribute('data-touch-scroll'); };
+    list.addEventListener('touchstart',event=>{
+      resetTouch();
+      if (event.touches.length !== 1 || list.scrollHeight<=list.clientHeight) return;
+      const point=event.touches[0];
+      touch={x:point.clientX,y:point.clientY,lastY:point.clientY};
+      list.setAttribute('data-touch-scroll','');
+    },{passive:true});
+    list.addEventListener('touchmove',event=>{
+      if (!touch || event.touches.length!==1) return;
+      const point=event.touches[0];
+      const delta=touch.lastY-point.clientY;
+      touch.lastY=point.clientY;
+      if (Math.abs(touch.y-point.clientY)<Math.max(5,Math.abs(touch.x-point.clientX))) return;
+      passScrollAtBoundary(list,delta,event,true);
+    },{passive:false});
+    list.addEventListener('touchend',resetTouch,{passive:true});
+    list.addEventListener('touchcancel',resetTouch,{passive:true});
+  }
 }
 
 export function mealSelectionMarkup(groups,selection) {

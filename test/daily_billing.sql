@@ -28,14 +28,16 @@ begin
  result:=public.fd_api('place',payload);first_order:=(result->>'id')::uuid;
  perform set_config('request.jwt.claim.sub',merchant::text,true);
  perform public.fd_api('transition',jsonb_build_object('id',first_order,'status','preparing'));
- perform public.fd_api('transition',jsonb_build_object('id',first_order,'status','picked_up'));
- perform public.fd_api('transition',jsonb_build_object('id',first_order,'status','delivered'));
+ if public.fd_api('merchant_invoices')->'today'->>'amount_cents' is distinct from '1000' then raise exception 'Commission missing at acceptance';end if;
  if (select platform_fee_cents from fly_delivery.orders where id=first_order)<>1000 then raise exception 'Commission included delivery or wrong rate';end if;
- update fly_delivery.orders set completed_at=(historical_day+time '23:59') at time zone 'America/Sao_Paulo' where id=first_order;
+ update fly_delivery.orders set commission_accepted_at=(historical_day+time '23:59') at time zone 'America/Sao_Paulo' where id=first_order;
  perform fly_delivery.close_daily_invoices(shop);perform fly_delivery.close_daily_invoices(shop);
  select id into inv1 from fly_delivery.daily_invoices where store_id=shop and invoice_date=historical_day;
  if inv1 is null or (select count(*) from fly_delivery.daily_invoices where store_id=shop)<>1 then raise exception 'Daily invoice duplicated or missing';end if;
  if (select due_at from fly_delivery.daily_invoices where id=inv1)<>((historical_day+1)+time '12:00') at time zone 'America/Sao_Paulo' then raise exception 'Wrong noon due date';end if;
+ perform public.fd_api('transition',jsonb_build_object('id',first_order,'status','picked_up'));
+ perform public.fd_api('transition',jsonb_build_object('id',first_order,'status','delivered'));
+ if public.fd_api('merchant_invoices')->'today'->>'amount_cents' is distinct from '0' then raise exception 'Delivery billed again on a later day';end if;
  perform set_config('request.jwt.claim.sub',admin::text,true);
  if exists(select 1 from jsonb_array_elements(public.fd_api('catalog')) s where s->>'id'=shop::text) then raise exception 'Overdue invoice did not suspend shop';end if;
  perform public.fd_api('admin_set_suspension',jsonb_build_object('id',shop,'suspend',true));
@@ -62,11 +64,16 @@ begin
  perform set_config('request.jwt.claim.sub',buyer::text,true);
  result:=public.fd_api('place',payload||jsonb_build_object('request_id',gen_random_uuid()));second_order:=(result->>'id')::uuid;
  perform set_config('request.jwt.claim.sub',merchant::text,true);
- perform public.fd_api('transition',jsonb_build_object('id',second_order,'status','preparing'));perform public.fd_api('transition',jsonb_build_object('id',second_order,'status','picked_up'));perform public.fd_api('transition',jsonb_build_object('id',second_order,'status','delivered'));
+ perform public.fd_api('transition',jsonb_build_object('id',second_order,'status','preparing'));
+ perform set_config('request.jwt.claim.sub',admin::text,true);
+ perform public.fd_api('admin_set_commission','{"commission_bps":2000}');
+ perform set_config('request.jwt.claim.sub',merchant::text,true);
+ perform public.fd_api('transition',jsonb_build_object('id',second_order,'status','picked_up'));
+ perform public.fd_api('transition',jsonb_build_object('id',second_order,'status','delivered'));
  if (select platform_fee_cents from fly_delivery.orders where id=second_order)<>1500 then raise exception 'New rate not reflected in next sale';end if;
  if public.fd_api('merchant_invoices')->'today'->>'amount_cents'<>'1500' then raise exception 'Today preview wrong';end if;
  perform fly_delivery.close_daily_invoices(shop);if (select count(*) from fly_delivery.daily_invoices where store_id=shop)<>1 then raise exception 'Current day closed early';end if;
- update fly_delivery.orders set completed_at=(historical_day+time '22:00') at time zone 'America/Sao_Paulo' where id=second_order;
+ update fly_delivery.orders set commission_accepted_at=(historical_day+time '22:00') at time zone 'America/Sao_Paulo' where id=second_order;
  -- Paid snapshots remain immutable, even if an administrator changes old records directly.
  perform fly_delivery.close_daily_invoices(shop);if (select amount_cents from fly_delivery.daily_invoices where id=inv1)<>1000 then raise exception 'Paid invoice mutated';end if;
  perform public.fd_billing_backend(fixture_secret,'tick','{"payments_ready":false}');

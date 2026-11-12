@@ -27,7 +27,7 @@ export function commissionChart(series,bucket) {
 
 function resultsMarkup(data) {
   const summary=data.summary;
-  const cards=[['Vendas com comissão',money(summary.sales_cents),'Base em produtos, sem taxa de entrega','bag'],['Pedidos entregues',summary.orders,'Com comissão registrada','check'],['Estabelecimentos',summary.stores,'Com vendas no período','store']];
+  const cards=[['Vendas com comissão',money(summary.sales_cents),'Base em produtos, sem taxa de entrega','bag'],['Pedidos com comissão',summary.orders,'Por data da comissão','check'],['Estabelecimentos',summary.stores,'Com vendas no período','store']];
   const maxStore=Math.max(1,...data.top_stores.map(store=>numeric(store.commission_cents)));
   const share=value=>summary.commission_cents?new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(value*100/summary.commission_cents)+'%':'0%';
   return '<section class="dashboard-metrics" aria-label="Resumo das comissões"><article class="dashboard-total"><span class="dashboard-metric-icon">'+icon('grid')+'</span><p>Comissões Fly Delivery</p><strong>'+money(summary.commission_cents)+'</strong><small>'+date(data.date_from)+' a '+date(data.date_to)+'</small></article>'+cards.map(([name,value,copy,symbol])=>'<article class="panel dashboard-metric"><span class="dashboard-metric-icon">'+icon(symbol)+'</span><p>'+name+'</p><strong>'+esc(value)+'</strong><small>'+copy+'</small></article>').join('')+'</section>' +
@@ -87,7 +87,7 @@ export function createCommissionDashboard(context) {
       '<div class="dashboard-periods" role="group" aria-label="Período do dashboard">'+periods.map(([key,name])=>'<button class="chip" data-dashboard-period="'+key+'" aria-pressed="'+(period===key)+'">'+name+'</button>').join('')+'</div>' +
       '<form id="dashboard-date-form" class="form-stack dashboard-date-form" hidden><label><span data-dashboard-start-label>Data inicial</span><input type="date" name="date_from" value="'+esc(from)+'" required></label><label data-dashboard-end>Data final<input type="date" name="date_to" value="'+esc(to)+'"></label><button type="submit" class="btn primary">Aplicar período</button></form>' +
       '<p id="dashboard-error" class="form-error" role="alert"></p><div id="dashboard-results"><div class="panel"><p class="muted">Carregando suas comissões…</p></div></div>' +
-      '<p class="muted dashboard-method">Comissões registradas nos pedidos entregues, pela data da entrega. A base inclui produtos, tamanhos e opcionais, sem a taxa de entrega. As taxas registradas em cada venda são preservadas. Os valores representam comissões geradas; os pagamentos das faturas têm seu próprio andamento.</p></section>';
+      '<p class="muted dashboard-method">As comissões dos novos pedidos entram no relatório na data do aceite. A base inclui produtos, tamanhos e opcionais, sem a taxa de entrega. Os valores representam as comissões geradas no período.</p></section>';
     controls();
     root.onclick=event=>{
       const button=event.target.closest('button');

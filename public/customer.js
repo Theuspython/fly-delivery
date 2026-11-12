@@ -1,7 +1,7 @@
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
   categories, sortCategories, sortMenuCategories, fallbackImages, empty, orderCard, transitionButton, bindTransitions, payments, statuses } from './shared.js';
 import { percentage } from './invoices.js';
-import { mealGroups,resolveMealSelection,mealChoicesMarkup,mealSelectionMarkup,syncMealChoices } from './meal-choices.js';
+import { mealGroups,resolveMealSelection,mealChoicesMarkup,mealSelectionMarkup,syncMealChoices,bindMealOptionsScroll } from './meal-choices.js';
 import { renderLiveMarkup } from './live-markup.js';
 import { customerNotifications } from './customer-notifications.js';
 
@@ -783,6 +783,7 @@ export function customer(context) {
       if (accompaniments.open) {
         if (mealContainer.dataset.size !== sizeName) {
           mealContainer.innerHTML = mealChoicesMarkup(product,groups,sizeName);
+          bindMealOptionsScroll(mealContainer);
           mealContainer.dataset.size = sizeName;
         }
         syncMealChoices(mealContainer,groups,sizeName,selection,!store.is_open);

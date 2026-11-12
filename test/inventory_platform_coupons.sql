@@ -87,6 +87,8 @@ begin
     raise exception 'Stock can be adjusted below reservations';
   exception when raise_exception then if sqlerrm not like 'FD: Há %' then raise;end if;end;
   perform public.fd_api('transition',jsonb_build_object('id',second_order,'status','preparing'));
+  if not exists(select 1 from fly_delivery.orders where id=second_order and platform_fee_cents=250 and commission_bps=500)
+    then raise exception 'Coupon commission missing at acceptance';end if;
   perform public.fd_api('transition',jsonb_build_object('id',second_order,'status','picked_up'));
   if (select stock_quantity from fly_delivery.products where id=product)<>2 then raise exception 'Physical stock changed on dispatch';end if;
   perform public.fd_api('transition',jsonb_build_object('id',second_order,'status','delivered'));
@@ -99,7 +101,7 @@ begin
   if not exists(select 1 from fly_delivery.orders where id=third_order and platform_fee_cents=0 and commission_bps is null)
     then raise exception 'Full coupon did not waive commission';end if;
   if (select stock_quantity from fly_delivery.products where id=product)<>0 then raise exception 'Final stock incorrect';end if;
-  update fly_delivery.orders set completed_at=((current_day-1)+time '19:00') at time zone 'America/Sao_Paulo' where id=second_order;
+  update fly_delivery.orders set commission_accepted_at=((current_day-1)+time '19:00') at time zone 'America/Sao_Paulo' where id=second_order;
   result:=public.fd_api('merchant_alerts');
   if not exists(select 1 from jsonb_array_elements(result->'invoices') x where x->>'amount_cents'='250')
     then raise exception 'Closed invoice notification missing or mispriced';end if;
