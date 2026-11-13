@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createBilling } from './billing.js';
 import { catalogPage } from './catalog.js';
+import { createPush,pushEndpoint } from './push.js';
 import { RealtimeClient } from '@supabase/realtime-js';
 import sharp from 'sharp';
 
@@ -185,6 +186,9 @@ async function removePhoto(bucket,key,token) {
 const billing = createBilling({rpc:(action,input)=>upstream('/rest/v1/rpc/fd_billing_backend',{
   body:{secret:process.env.FD_BILLING_BRIDGE_TOKEN,action,input}
 })});
+const push = createPush({rpc:(secret,action_name,payload)=>upstream('/rest/v1/rpc/fd_push_worker',{
+  body:{secret,action_name,payload}
+})});
 const billingRate = new Map();
 function limitBilling(req,max){
   const key=String(req.headers['x-real-ip']??req.socket.remoteAddress??'unknown').slice(0,80)+':'+new URL(req.url,'http://localhost').pathname;
@@ -310,7 +314,7 @@ function catalogSnapshot() {
 }
 
 async function api(req, res, url) {
-  const isRead = req.method === 'GET' && ['/api/catalog','/api/order-updates','/api/profile-photo'].includes(url.pathname);
+  const isRead = req.method === 'GET' && ['/api/catalog','/api/order-updates','/api/profile-photo','/api/push-config'].includes(url.pathname);
   if (!isRead) {
     if (req.method !== 'POST') throw new HttpError(405, 'Método indisponível.');
     const origin = req.headers.origin;
@@ -320,6 +324,7 @@ async function api(req, res, url) {
   }
   if (url.pathname === '/api/profile-photo' && req.method === 'GET') return serveProfilePhoto(req,res,url);
   if (url.pathname === '/api/order-updates') return streamOrders(req,res);
+  if (url.pathname === '/api/push-config') return json(res,200,{publicKey:push.publicKey});
   const { sessionCookie, refreshCookie } = cookiesFor(req);
   const cookies = readCookies(req);
   const access = cookies[sessionCookie];
@@ -430,8 +435,26 @@ async function api(req, res, url) {
       const data = await upstream('/rest/v1/rpc/fd_admin_history_cleanup',{ token:access,body:{input},timeout:50000 });
       return json(res,200,data);
     }
+    if (action.startsWith('push_')) {
+      const name = action.slice(5);
+      const adminAction = ['schedule','history','cancel'].includes(name);
+      const role = sessionCookie === 'fd_loja_access' ? 'merchant' : sessionCookie === 'fd_cliente_access' ? 'customer' : null;
+      if (adminAction && sessionCookie !== 'fd_admin_access') throw new HttpError(403,'Área exclusiva da administração.');
+      if (!adminAction && (!role || !['subscribe','unsubscribe','subscription_status'].includes(name))) {
+        throw new HttpError(403,'Operação de notificação indisponível.');
+      }
+      if (['subscribe','schedule'].includes(name) && !push.enabled) throw new HttpError(503,'Envio de notificações indisponível.');
+      const endpoint = adminAction ? null : pushEndpoint(input.endpoint);
+      if (!adminAction && !endpoint) throw new HttpError(400,'Inscrição de notificações inválida.');
+      const data = await upstream('/rest/v1/rpc/fd_push_account',{
+        token:access,body:{action_name:name,payload:adminAction ? input : {...input,endpoint,role}}
+      });
+      if (name === 'schedule') void push.tick();
+      return json(res,200,data);
+    }
     const payload = action === 'customer_profile' && ('name' in input || 'phone' in input) ? profileFields(input) : input;
     const data = await upstream('/rest/v1/rpc/fd_api', { token: access, body: { action, input:payload } });
+    if (action === 'place' || action === 'transition') void push.tick();
     if (['set_product_availability','save_product','delete_product','save_menu_product_order','save_menu_category_order',
       'merchant_delete_coupon'].includes(action)) {
       catalogCache = catalogRequest = null;
@@ -547,5 +570,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const tick=()=>billing.tick().catch(error=>console.error('Billing maintenance failed:',error.status??'unavailable'));
     tick();
     setInterval(tick,30000).unref();
+    void push.tick();
+    setInterval(push.tick,15000).unref();
   });
 }

@@ -4,6 +4,7 @@ import { customer } from './customer.js';
 import { operations } from './operations.js';
 import { merchant } from './merchant.js';
 import { compactProfilePhoto,validateProfilePhoto } from './profile-photo.js';
+import { bindPushSettings,disconnectPush,pushSettingsMarkup } from './push-settings.js';
 
 const page = location.pathname.split('/')[1] || 'cliente';
 const titles = { cliente:'Cliente', loja:'Estabelecimento', admin:'Administração' };
@@ -208,6 +209,7 @@ function changePassword() {
 
 function account() {
   const canChangePassword = page === 'loja' && current.role === 'merchant' && current.operator_login;
+  const pushAccount = (page === 'cliente' && current.role === 'customer') || (page === 'loja' && current.role === 'merchant');
   const name = page === 'cliente' && profile ? profile.name : page === 'admin' ? 'Administrador' :
     current.operator_login || current.email;
   const customerPhoto = page === 'cliente' && profile;
@@ -218,9 +220,10 @@ function account() {
     icon('camera') + (profile.photo ? 'Trocar foto de perfil' : 'Adicionar foto de perfil') + '</button>' +
     '<p class="muted">Sua foto aparece nos pedidos recebidos pelos estabelecimentos.</p><p class="muted" data-photo-status role="status"></p>' +
     '<p class="form-error" data-form-error role="alert"></p><div data-save-profile-photo hidden><button class="btn primary wide" type="submit" disabled>Salvar foto</button></div></form>' :
-    '<p class="dialog-copy">' + esc(name) + '</p>') + '<div class="order-actions">' +
+    '<p class="dialog-copy">' + esc(name) + '</p>') + (pushAccount ? pushSettingsMarkup() : '') + '<div class="order-actions">' +
     (canChangePassword ? '<button class="btn primary" data-change-password>Alterar senha</button>' : '') +
     '<button class="btn outline" data-logout>Sair</button></div>');
+  if (pushAccount) void bindPushSettings($('[data-push-settings]',el));
   if (customerPhoto) {
     const actor = current.id;
     const form = $('#profile-photo-form',el);
@@ -265,6 +268,7 @@ function account() {
   if (canChangePassword) $('[data-change-password]',el).onclick = changePassword;
   $('[data-logout]',el).onclick = async () => {
     try {
+      if (pushAccount) await disconnectPush();
       await api('logout', {});
       current = null;
       profile = null;

@@ -3,6 +3,7 @@ import { mountPlatformCoupons } from './platform-coupons.js';
 import { percentage } from './invoices.js';
 import { createCommissionDashboard } from './admin-dashboard.js';
 import { mountHistoryCleanup } from './admin-history-cleanup.js';
+import { mountAdminPush } from './admin-push.js';
 import { createMealEditor } from './meal-choices.js';
 import { normalize } from './catalog-search.js';
 import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
@@ -433,7 +434,8 @@ export function operations(page, context) {
   let timer,searchTimer,drawer;
   let sequence = 0,clientPage = 0;
   let storeList = [],refreshing = false,search = '';
-  const links=[['estabelecimentos','Estabelecimentos','store'],['clientes','Clientes','person'],['dashboard','Dashboard','grid'],['promocoes','Dias promocionais','calendar'],['cupons','Criar cupom de desconto','tag'],['limpeza','Limpeza de histórico','trash']];
+  const links=[['estabelecimentos','Estabelecimentos','store'],['clientes','Clientes','person'],['dashboard','Dashboard','grid'],
+    ['notificacoes','Notificações push','bell'],['promocoes','Dias promocionais','calendar'],['cupons','Criar cupom de desconto','tag'],['limpeza','Limpeza de histórico','trash']];
   const currentLink=()=>links.find(([key])=>key===location.hash.slice(1))??links[0];
   const section=()=>currentLink()[0];
   function closeMenu(){if(drawer?.open)drawer.close();}
@@ -476,6 +478,7 @@ export function operations(page, context) {
     const body=$('#ops-body');
     if(user?.role!=='admin'){closeMenu();body.innerHTML='<div class="panel">'+empty(user?'Acesso restrito':'Entre para continuar',user?'Seu perfil não tem acesso a esta área.':'Use o login e a senha da administração.','shield')+(user?'<button class="btn outline" data-switch-account>Trocar de conta</button>':'<button class="btn primary" data-signin>Entrar</button>')+'</div>';return;}
     if(section()==='dashboard'){dashboard.mount(body);return;}
+    if(section()==='notificacoes'){mountAdminPush(body);return;}
     if(section()==='promocoes'){mountPromotionDays(body);return;}
     if(section()==='cupons'){mountPlatformCoupons(body);return;}
     if(section()==='limpeza'){mountHistoryCleanup(body);return;}
