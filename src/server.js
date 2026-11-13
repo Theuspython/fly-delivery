@@ -23,6 +23,7 @@ const mime = {
 };
 const titles = { loja:'Estabelecimento', admin:'Administração' };
 const apps = new Set(['cliente','loja','admin']);
+const assetLinksFile = resolve(root, '.well-known/assetlinks.json');
 
 function cookiesFor(req) {
   const app = req.headers['x-fd-app'];
@@ -510,6 +511,9 @@ export function createApp() {
       }
       const path = routes.has(url.pathname) ? '/index.html' : decodeURIComponent(url.pathname);
       const file = resolve(root, '.' + path);
+      if (file === assetLinksFile && !/^www\.flydeliverypp\.com\.br(?::443)?$/i.test(req.headers.host ?? '')) {
+        throw new HttpError(404, 'Página não encontrada.');
+      }
       const type = mime[extname(file)];
       if (!file.startsWith(root + sep) || !type || !(await stat(file).catch(() => null))?.isFile()) {
         throw new HttpError(404, 'Página não encontrada.');

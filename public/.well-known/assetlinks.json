@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "br.com.flydeliverypp.www.twa",
+        "sha256_cert_fingerprints": ["24:C0:E1:0A:4C:6D:32:5D:E3:B4:DE:83:D0:D8:41:9F:9D:0D:CD:92:92:C3:07:DD:30:C2:52:93:2D:54:79:9D"]
+      }
+    }]
