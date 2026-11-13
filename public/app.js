@@ -4,7 +4,7 @@ import { customer } from './customer.js';
 import { operations } from './operations.js';
 import { merchant } from './merchant.js';
 import { compactProfilePhoto,validateProfilePhoto } from './profile-photo.js';
-import { bindPushSettings,disconnectPush,pushSettingsMarkup } from './push-settings.js';
+import { bindPushSettings,disconnectPush,pushActive,pushSettingsMarkup } from './push-settings.js';
 
 const page = location.pathname.split('/')[1] || 'cliente';
 const titles = { cliente:'Cliente', loja:'Estabelecimento', admin:'Administração' };
@@ -170,7 +170,28 @@ async function loadSession() {
   if (page === 'cliente') profile = await command('customer_profile');
 }
 
+const pushBanner = document.createElement('div');
+pushBanner.className = 'wrap push-prompt';
+pushBanner.hidden = true;
+main.before(pushBanner);
+
+function renderPushBanner() {
+  const accountId = current?.id;
+  pushBanner.hidden = true;
+  if (!accountId || !((page === 'cliente' && profile && current.role === 'customer') ||
+    (page === 'loja' && current.role === 'merchant'))) return;
+  pushBanner.innerHTML = '<button type="button" class="btn outline">' + icon('bell') + ' Ativar notificações</button>';
+  $('button',pushBanner).onclick = () => {
+    const dialog = modal('Notificações',pushSettingsMarkup());
+    void bindPushSettings($('[data-push-settings]',dialog),active=>{pushBanner.hidden=active;});
+  };
+  void pushActive().catch(()=>false).then(active=>{
+    if (current?.id === accountId) pushBanner.hidden = active;
+  });
+}
+
 function renderApp() {
+  renderPushBanner();
   if (page === 'loja' && !current) {
     app.stop();
     header();
@@ -223,7 +244,7 @@ function account() {
     '<p class="dialog-copy">' + esc(name) + '</p>') + (pushAccount ? pushSettingsMarkup() : '') + '<div class="order-actions">' +
     (canChangePassword ? '<button class="btn primary" data-change-password>Alterar senha</button>' : '') +
     '<button class="btn outline" data-logout>Sair</button></div>');
-  if (pushAccount) void bindPushSettings($('[data-push-settings]',el));
+  if (pushAccount) void bindPushSettings($('[data-push-settings]',el),active=>{pushBanner.hidden=active;});
   if (customerPhoto) {
     const actor = current.id;
     const form = $('#profile-photo-form',el);

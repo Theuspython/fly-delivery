@@ -440,10 +440,10 @@ async function api(req, res, url) {
       const adminAction = ['schedule','history','cancel'].includes(name);
       const role = sessionCookie === 'fd_loja_access' ? 'merchant' : sessionCookie === 'fd_cliente_access' ? 'customer' : null;
       if (adminAction && sessionCookie !== 'fd_admin_access') throw new HttpError(403,'Área exclusiva da administração.');
-      if (!adminAction && (!role || !['subscribe','unsubscribe','subscription_status'].includes(name))) {
+      if (!adminAction && (!role || !['subscribe','unsubscribe','subscription_status','test','test_status'].includes(name))) {
         throw new HttpError(403,'Operação de notificação indisponível.');
       }
-      if (['subscribe','schedule'].includes(name) && !push.enabled) throw new HttpError(503,'Envio de notificações indisponível.');
+      if (['subscribe','schedule','test'].includes(name) && !push.enabled) throw new HttpError(503,'Envio de notificações indisponível.');
       const endpoint = adminAction ? null : pushEndpoint(input.endpoint);
       if (!adminAction && !endpoint) throw new HttpError(400,'Inscrição de notificações inválida.');
       const data = await upstream('/rest/v1/rpc/fd_push_account',{

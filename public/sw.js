@@ -1,7 +1,7 @@
-const cacheName = 'fly-delivery-shell-v56';
-const shell = ['/styles.css', '/app.js', '/install.js', '/shared.js', '/customer.js', '/customer-notifications.js', '/catalog-search.js', '/operations.js', '/admin-dashboard.js', '/admin-history-cleanup.js', '/meal-choices.js', '/live-markup.js', '/profile-photo.js', '/merchant.js', '/inventory.js', '/invoices.js', '/promotions.js', '/platform-coupons.js', '/push-settings.js', '/admin-push.js', '/assets/icon.svg?v=motoboy'];
+const cacheName = 'fly-delivery-shell-v57';
+const shell = ['/styles.css', '/app.js', '/install.js', '/shared.js', '/customer.js', '/customer-notifications.js', '/catalog-search.js', '/operations.js', '/admin-dashboard.js', '/admin-history-cleanup.js', '/meal-choices.js', '/live-markup.js', '/profile-photo.js', '/merchant.js', '/inventory.js', '/invoices.js', '/promotions.js', '/platform-coupons.js', '/push-settings.js', '/order-sound.js', '/admin-push.js', '/assets/icon.svg?v=motoboy'];
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)));
+  event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('fly-delivery-shell-') && key !== cacheName).map(key => caches.delete(key)))));
@@ -16,12 +16,18 @@ self.addEventListener('push', event => {
   let data;
   try { data = event.data?.json(); } catch { data = null; }
   const url = notificationUrl(data?.path);
-  event.waitUntil(self.registration.showNotification(data?.title || 'Fly Delivery',{
-    body:data?.body || 'Abra o Fly Delivery para conferir.',
-    icon:'/assets/icon-192.png?v=motoboy',
-    tag:data?.tag,
-    data:{url:url.href}
-  }));
+  event.waitUntil((async ()=>{
+    await self.registration.showNotification(data?.title || 'Fly Delivery',{
+      body:data?.body || 'Abra o Fly Delivery para conferir.',
+      icon:'/assets/icon-192.png?v=motoboy',
+      tag:data?.tag,
+      data:{url:url.href}
+    });
+    if (typeof data?.orderEvent !== 'string') return;
+    const clients = await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    const foreground = clients.find(client=>client.visibilityState === 'visible' && new URL(client.url).pathname === url.pathname);
+    foreground?.postMessage({type:'fly-delivery-order',orderEvent:data.orderEvent});
+  })());
 });
 
 self.addEventListener('notificationclick',event=>{

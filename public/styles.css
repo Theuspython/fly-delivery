@@ -729,7 +729,10 @@ p { line-height:1.5 }
 .meal-selection-summary li { max-width:100%; padding:4px 8px; border-radius:9px; background:var(--soft);
   color:var(--orange); font-size:.76rem; font-weight:700; overflow-wrap:anywhere; }
 .push-settings { display:grid; gap:8px; border-top:1px solid var(--line); padding-top:14px; margin-top:15px; }
-.push-settings button { justify-self:start; }
+.push-prompt { display:flex; justify-content:center; padding-block:12px 0; }
+.push-prompt[hidden] { display:none; }
+.push-settings-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.push-settings-actions:empty,.push-settings [role="status"]:empty { display:none; }
 .push-settings button[hidden],[data-push-schedule][hidden] { display:none; }
 .push-panel { margin-bottom:14px; }
 .push-panel h2 { margin-bottom:10px; }

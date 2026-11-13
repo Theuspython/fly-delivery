@@ -3,6 +3,7 @@ import { $, main, esc, icon, money, api, command, modal, toast, bindSubmit,
 import { percentage } from './invoices.js';
 import { mealGroups,resolveMealSelection,mealChoicesMarkup,mealSelectionMarkup,syncMealChoices,bindMealOptionsScroll } from './meal-choices.js';
 import { renderLiveMarkup } from './live-markup.js';
+import { playOrderSound } from './order-sound.js';
 import { customerNotifications } from './customer-notifications.js';
 
 function stored(key, fallback) {
@@ -1091,7 +1092,10 @@ export function customer(context) {
         if (!list.isConnected) return;
         if (statusByOrder) {
           const changed = orders.find(order => statusByOrder.has(order.id) && statusByOrder.get(order.id) !== order.status);
-          if (changed) toast(changed.store + ' · ' + statuses[changed.status]);
+          if (changed) {
+            toast(changed.store + ' · ' + statuses[changed.status]);
+            playOrderSound(changed.id + ':' + changed.status);
+          }
           else if ([...statusByOrder.keys()].some(id=>!orders.some(order=>order.id===id))) toast('Pedido atualizado. Confira o Histórico de pedidos.');
         }
         statusByOrder = new Map(orders.map(order => [order.id,order.status]));

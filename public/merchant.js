@@ -1,3 +1,4 @@
+import { playOrderSound } from './order-sound.js';
 import { $, main, esc, icon, money, api, command, empty, orderCard, transitionButton, bindTransitions, toast } from './shared.js';
 import { invoicesMarkup, suspensionBanner } from './invoices.js';
 import { productForm, storeSettings, storeMarkup, organizeMenuCategories, organizeMenuProducts,
@@ -113,6 +114,7 @@ export function merchant(context) {
   let openOrderId = null;
   let queueFilter = 'placed';
   let activeOrders = [];
+  let ordersLoaded = false;
   let queueIdentity = null;
   const productFilters = new Map();
   const pendingAvailability = new Set();
@@ -203,7 +205,11 @@ export function merchant(context) {
           queueIdentity ?? command('merchant_store_identity').catch(() => null)
         ]);
         if (revision !== sequence || context.user !== user || currentSection !== section()) return;
+        const newOrder = ordersLoaded && orders.find(order=>order.status === 'placed' &&
+          !activeOrders.some(previous=>previous.id === order.id));
+        if (newOrder) playOrderSound(newOrder.id + ':placed');
         activeOrders = orders;
+        ordersLoaded = true;
         queueIdentity = identity;
         renderLiveMarkup($('#merchant-store-identity'),(identity ?? billingStatus.stores ?? []).map(shop =>
           '<span class="merchant-store-identity">' + (shop.image ? '<img class="menu-admin-photo" src="' + esc(shop.image) + '" alt="">' :
@@ -262,6 +268,7 @@ export function merchant(context) {
       openOrderId = null;
       queueFilter = 'placed';
       activeOrders = [];
+      ordersLoaded = false;
       productFilters.clear();
     }
     const currentSection = section();

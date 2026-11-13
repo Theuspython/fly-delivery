@@ -30,12 +30,14 @@ export function createPush({rpc, env = process.env, send = webPush.sendNotificat
       };
       try {
         await send({endpoint:job.endpoint,keys:{p256dh:job.p256dh,auth:job.auth_secret}},
-          JSON.stringify({title:job.title,body:job.body,tag:job.tag,path:job.path || (job.role==='merchant' ? '/loja/#pedidos' : '/cliente/')}),options);
+          JSON.stringify({title:job.title,body:job.body,tag:job.tag,orderEvent:job.order_event,
+            path:job.path || (job.role==='merchant' ? '/loja/#pedidos' : '/cliente/')}),options);
         result = 'sent';
       } catch (error) {
         const status = error.statusCode;
         if (status === 404 || status === 410) result = 'expired';
         else if (!status || status === 429 || status >= 500) result = 'retry';
+        if (result !== 'expired') console.warn('Push provider response:',new URL(job.endpoint).hostname,status ?? error.name);
       }
     }
     return {id:job.id,lease:job.lease,result};
