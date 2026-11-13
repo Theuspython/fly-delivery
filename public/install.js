@@ -1,5 +1,18 @@
 import { $,icon,modal,toast } from './shared.js';
 
+export const isAndroid = () => navigator.userAgentData?.platform === 'Android' || /Android/i.test(navigator.userAgent);
+
+export function appWorkerScope(path = location.pathname) {
+  // Chromium resolves Android notification delegation using the worker registration's scope.
+  return isAndroid() && ['/cliente/','/loja/'].includes(path) ? path : '/';
+}
+
+let workerRegistration;
+export function registerAppWorker() {
+  return workerRegistration ??= navigator.serviceWorker.register('/sw.js',{scope:appWorkerScope()})
+    .catch(error=>{ workerRegistration = null;throw error; });
+}
+
 export function setupInstall() {
   let pending;
   let busy=false;
@@ -74,7 +87,7 @@ export function setupInstall() {
     if ($('[data-native-install]')) $('#dialog').close();
   });
   mode.addEventListener?.('change',()=>{installed=mode.matches || navigator.standalone===true;update();});
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  if ('serviceWorker' in navigator) void registerAppWorker().catch(()=>{});
 
   return {bind(button){button.onclick=request;update();}};
 }

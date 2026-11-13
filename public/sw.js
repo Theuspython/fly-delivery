@@ -1,10 +1,11 @@
-const cacheName = 'fly-delivery-shell-v57';
+const cacheName = 'fly-delivery-shell-v58';
 const shell = ['/styles.css', '/app.js', '/install.js', '/shared.js', '/customer.js', '/customer-notifications.js', '/catalog-search.js', '/operations.js', '/admin-dashboard.js', '/admin-history-cleanup.js', '/meal-choices.js', '/live-markup.js', '/profile-photo.js', '/merchant.js', '/inventory.js', '/invoices.js', '/promotions.js', '/platform-coupons.js', '/push-settings.js', '/order-sound.js', '/admin-push.js', '/assets/icon.svg?v=motoboy'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('fly-delivery-shell-') && key !== cacheName).map(key => caches.delete(key)))));
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('fly-delivery-shell-') && key !== cacheName).map(key => caches.delete(key))))
+    .then(() => self.clients.claim()));
 });
 
 function notificationUrl(path) {
