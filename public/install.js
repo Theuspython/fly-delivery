@@ -1,5 +1,12 @@
 import { $,icon,modal,toast } from './shared.js';
 
+const displayModes = ['standalone','fullscreen','minimal-ui','window-controls-overlay'];
+export const isInstalledApp = () => navigator.standalone === true || /^android-app:\/\/br\.com\.flydeliverypp\.www\.twa(?:\/|$)/.test(document.referrer) ||
+  displayModes.some(mode=>window.matchMedia('(display-mode: '+mode+')').matches);
+
+export const isAppleMobile = () => /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 export const isAndroid = () => navigator.userAgentData?.platform === 'Android' || /Android/i.test(navigator.userAgent);
 
 export function appWorkerScope(path = location.pathname) {
@@ -16,12 +23,20 @@ export function registerAppWorker() {
 export function setupInstall() {
   let pending;
   let busy=false;
-  const mode=window.matchMedia('(display-mode: standalone)');
-  let installed=mode.matches || navigator.standalone===true;
-  const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  let installed=isInstalledApp();
+  let suggestion;
+  let suggestionTimer;
   const isSafari=()=>/Safari/.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
 
+  function dismissSuggestion() {
+    suggestion?.remove();
+    suggestion = null;
+  }
+
   function update() {
+    if (installed) dismissSuggestion();
+    const install = suggestion?.querySelector('[data-suggest-install]');
+    if (install) install.disabled = busy;
     for (const button of document.querySelectorAll('[data-install]')) {
       button.hidden=installed;
       const container=button.closest('[data-install-container]');
@@ -29,30 +44,44 @@ export function setupInstall() {
       button.innerHTML=icon('install') + ' ' + (installed ? 'App instalado' : busy ? 'Instalando…' : 'Instalar app');
       button.disabled=installed || busy;
     }
-    const ready=$('[data-native-install]');
-    if (ready) {
-      ready.disabled=!pending || busy || installed;
-      ready.textContent=installed ? 'App instalado' : pending ? 'Instalar agora' : 'Aguardando o navegador…';
-    }
   }
 
   function instructions() {
-    if (isIOS()) {
+    if (isAppleMobile()) {
       modal('Instalar no iPhone ou iPad',(isSafari() ? '' : '<p class="dialog-copy">Abra este endereço no Safari para instalar.</p>') +
         '<ol class="install-steps"><li>No Safari, toque em <strong>Compartilhar</strong> (quadrado com a seta para cima). Se necessário, abra primeiro o menu do Safari.</li>' +
         '<li>Selecione <strong>Adicionar à Tela de Início</strong>. Se não aparecer, procure em <strong>Editar Ações</strong>.</li>' +
         '<li>Se aparecer <strong>Abrir como App</strong>, deixe ativado e toque em <strong>Adicionar</strong>.</li></ol>');
       return;
     }
-    const supportsPrompt='onbeforeinstallprompt' in window;
-    const el=modal('Instalar Fly Delivery',supportsPrompt ?
-      '<p class="dialog-copy">O navegador ainda não disponibilizou a instalação deste app. Assim que liberar, você poderá confirmar abaixo.</p>' +
-      '<button class="btn primary wide" data-native-install disabled>Aguardando o navegador…</button>' +
-      '<p class="muted install-note">Se o app já estiver instalado, abra pelo ícone na Tela de Início. A disponibilidade da instalação é controlada pelo navegador.</p>' :
-      '<p class="dialog-copy">Este navegador não oferece a confirmação automática de instalação. No menu do navegador, procure <strong>Instalar app</strong> ou <strong>Adicionar à Tela de Início</strong>. No Android, você também pode abrir este endereço no Chrome.</p>');
-    const button=$('[data-native-install]',el);
-    if (button) button.onclick=request;
-    update();
+    if (isAndroid()) {
+      modal('Instalar no Android','<ol class="install-steps"><li>Abra o Fly Delivery no Chrome.</li>' +
+        '<li>Toque nos <strong>três pontos</strong> e escolha <strong>Instalar app</strong> ou <strong>Adicionar à tela inicial</strong>.</li>' +
+        '<li>Confirme e abra o Fly Delivery pelo novo ícone.</li></ol>');
+      return;
+    }
+    modal('Instalar Fly Delivery','<p class="dialog-copy">No menu do navegador, procure <strong>Instalar app</strong> ou <strong>Adicionar à tela inicial</strong>.</p>');
+  }
+
+  function suggest() {
+    clearTimeout(suggestionTimer);
+    dismissSuggestion();
+    suggestionTimer = setTimeout(()=>{
+      if (installed || isInstalledApp()) return;
+      suggestion = document.createElement('aside');
+      suggestion.className = 'app-install-suggestion';
+      suggestion.setAttribute('aria-label','Instalar Fly Delivery');
+      suggestion.innerHTML = '<img src="/assets/icon-192.png?v=motoboy" width="48" height="48" alt="">' +
+        '<div><h2>Fly Delivery a um toque</h2><p>Instale o app e acompanhe seus pedidos pelo celular.</p></div>' +
+        '<button class="icon-button" type="button" data-dismiss-install aria-label="Fechar sugestão">' + icon('close') + '</button>' +
+        '<button class="btn primary wide" type="button" data-suggest-install>' + icon('install') + ' Instalar app</button>';
+      $('[data-dismiss-install]',suggestion).onclick = dismissSuggestion;
+      $('[data-suggest-install]',suggestion).onclick = ()=>{
+        dismissSuggestion();
+        void request();
+      };
+      document.body.append(suggestion);
+    },5000);
   }
 
   async function request() {
@@ -68,7 +97,6 @@ export function setupInstall() {
       const choice=event.userChoice ? await event.userChoice : result;
       if (choice?.outcome==='accepted') {
         installed=true;
-        if ($('[data-native-install]')) $('#dialog').close();
         toast('App instalado. Abra pelo ícone na Tela de Início.');
       }
     } catch {
@@ -79,15 +107,15 @@ export function setupInstall() {
   window.addEventListener('beforeinstallprompt',event=>{
     event.preventDefault();pending=event;
     // A new eligibility event also allows reinstalling after removal, without a saved flag.
-    installed=mode.matches || navigator.standalone===true;
+    installed=isInstalledApp();
     update();
   });
   window.addEventListener('appinstalled',()=>{
     installed=true;pending=null;busy=false;update();
-    if ($('[data-native-install]')) $('#dialog').close();
   });
-  mode.addEventListener?.('change',()=>{installed=mode.matches || navigator.standalone===true;update();});
+  for (const mode of displayModes) window.matchMedia('(display-mode: '+mode+')')
+    .addEventListener?.('change',()=>{installed=isInstalledApp();update();});
   if ('serviceWorker' in navigator) void registerAppWorker().catch(()=>{});
 
-  return {bind(button){button.onclick=request;update();}};
+  return {suggest,bind(button){button.onclick=request;update();}};
 }

@@ -728,11 +728,10 @@ p { line-height:1.5 }
 .meal-selection-summary[hidden] { display:none; }
 .meal-selection-summary li { max-width:100%; padding:4px 8px; border-radius:9px; background:var(--soft);
   color:var(--orange); font-size:.76rem; font-weight:700; overflow-wrap:anywhere; }
-.push-settings { display:grid; gap:8px; border-top:1px solid var(--line); padding-top:14px; margin-top:15px; }
 .push-prompt { display:flex; justify-content:center; padding-block:12px 0; }
 .push-prompt[hidden] { display:none; }
-.push-settings-actions { display:flex; flex-wrap:wrap; gap:8px; }
-.push-settings-actions:empty,.push-settings [role="status"]:empty { display:none; }
+.push-settings { display:grid; gap:8px; border-top:1px solid var(--line); padding-top:14px; margin-top:15px; }
+.push-settings [role="status"]:empty { display:none; }
 .push-settings button[hidden],[data-push-schedule][hidden] { display:none; }
 .push-panel { margin-bottom:14px; }
 .push-panel h2 { margin-bottom:10px; }
@@ -814,3 +813,31 @@ p { line-height:1.5 }
 .cleanup-counts div { padding:.65rem; border:1px solid var(--line); border-radius:.65rem; background:var(--page); }
 .cleanup-counts dt { font-size:.8rem; color:var(--muted); overflow-wrap:anywhere; }
 .cleanup-counts dd { margin:.2rem 0 0; font-weight:850; overflow-wrap:anywhere; }
+
+.app-install-suggestion {
+  position:fixed; z-index:40; right:max(16px,env(safe-area-inset-right)); bottom:calc(16px + env(safe-area-inset-bottom));
+  width:min(360px,calc(100% - 32px)); display:grid; grid-template-columns:auto minmax(0,1fr) auto;
+  gap:10px 12px; align-items:center; padding:15px; border:1px solid var(--line); border-radius:20px;
+  background:var(--surface); box-shadow:0 12px 36px #2a170b26;
+}
+body:has(.floating-cart:not([hidden])) .app-install-suggestion { bottom:calc(94px + env(safe-area-inset-bottom)); }
+.app-install-suggestion img { border-radius:12px; }
+.app-install-suggestion h2 { font-size:1rem; }
+.app-install-suggestion p { margin-top:3px; color:var(--muted); font-size:.82rem; line-height:1.4; }
+.app-install-suggestion .icon-button { align-self:start; width:32px; height:32px; }
+.app-install-suggestion .btn { grid-column:1 / -1; }
+#dialog:has(.permission-card) { width:min(390px,calc(100% - 28px)); padding:28px 22px 22px; }
+#dialog:has(.permission-card) > .dialog-head { position:absolute; top:12px; right:12px; margin:0; }
+#dialog:has(.permission-card) > .dialog-head > div {
+  position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;
+}
+.permission-card { display:grid; justify-items:center; gap:11px; text-align:center; padding:4px 4px 0; }
+.permission-card h2 { font-size:1.47rem; letter-spacing:-.035em; }
+.permission-icon { display:grid; place-items:center; width:58px; height:58px; border-radius:19px; background:var(--soft); color:var(--orange); }
+.permission-icon .icon { width:27px; height:27px; }
+.permission-copy { font-size:.93rem; color:var(--muted); line-height:1.45; }
+.permission-card .btn { width:100%; margin-top:4px; }
+.permission-card [role="status"]:empty { display:none; }
+.permission-card [role="status"] { font-size:.85rem; line-height:1.4; }
+.permission-card button[hidden],.push-settings [data-sound-controls][hidden] { display:none; }
+.push-settings [data-sound-controls] { display:grid; gap:6px; justify-items:start; }

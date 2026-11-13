@@ -1,10 +1,10 @@
 import { $, main, esc, icon, api, command, modal, toast, bindSubmit, profileAvatar } from './shared.js';
-import { setupInstall } from './install.js';
+import { isInstalledApp,setupInstall } from './install.js';
 import { customer } from './customer.js';
 import { operations } from './operations.js';
 import { merchant } from './merchant.js';
 import { compactProfilePhoto,validateProfilePhoto } from './profile-photo.js';
-import { bindPushSettings,disconnectPush,pushActive,pushSettingsMarkup } from './push-settings.js';
+import { bindPushSettings,disconnectPush,promptCustomerPermissions,pushActive,pushSettingsMarkup } from './push-settings.js';
 
 const page = location.pathname.split('/')[1] || 'cliente';
 const titles = { cliente:'Cliente', loja:'Estabelecimento', admin:'Administração' };
@@ -170,28 +170,38 @@ async function loadSession() {
   if (page === 'cliente') profile = await command('customer_profile');
 }
 
-const pushBanner = document.createElement('div');
-pushBanner.className = 'wrap push-prompt';
-pushBanner.hidden = true;
-main.before(pushBanner);
-
-function renderPushBanner() {
-  const accountId = current?.id;
-  pushBanner.hidden = true;
-  if (!accountId || !((page === 'cliente' && profile && current.role === 'customer') ||
-    (page === 'loja' && current.role === 'merchant'))) return;
-  pushBanner.innerHTML = '<button type="button" class="btn outline">' + icon('bell') + ' Ativar notificações</button>';
-  $('button',pushBanner).onclick = () => {
+const merchantPushBanner = page === 'loja' ? document.createElement('div') : null;
+if (merchantPushBanner) {
+  merchantPushBanner.className = 'wrap push-prompt';
+  merchantPushBanner.hidden = true;
+  main.before(merchantPushBanner);
+}
+function renderMerchantPushBanner() {
+  if (!merchantPushBanner) return;
+  merchantPushBanner.hidden = true;
+  if (current?.role !== 'merchant') return;
+  const id = current.id;
+  merchantPushBanner.innerHTML = '<button type="button" class="btn outline">' + icon('bell') + ' Ativar notificações</button>';
+  $('button',merchantPushBanner).onclick = ()=>{
     const dialog = modal('Notificações',pushSettingsMarkup());
-    void bindPushSettings($('[data-push-settings]',dialog),active=>{pushBanner.hidden=active;});
+    void bindPushSettings($('[data-push-settings]',dialog),active=>{merchantPushBanner.hidden=active;});
   };
   void pushActive().catch(()=>false).then(active=>{
-    if (current?.id === accountId) pushBanner.hidden = active;
+    if (current?.id === id) merchantPushBanner.hidden = active;
   });
 }
 
+let promptedAccount;
+function promptPermissions() {
+  if (page !== 'cliente' || !profile || current?.role !== 'customer' || !isInstalledApp()) return;
+  const id = current.id;
+  if (promptedAccount === id) return;
+  promptedAccount = id;
+  void promptCustomerPermissions(()=>current?.id === id && !!profile);
+}
+
 function renderApp() {
-  renderPushBanner();
+  renderMerchantPushBanner();
   if (page === 'loja' && !current) {
     app.stop();
     header();
@@ -210,6 +220,7 @@ function renderApp() {
   if (!app && page === 'cliente') app = customer(context);
   header();
   app.render();
+  promptPermissions();
 }
 
 function changePassword() {
@@ -231,6 +242,7 @@ function changePassword() {
 function account() {
   const canChangePassword = page === 'loja' && current.role === 'merchant' && current.operator_login;
   const pushAccount = (page === 'cliente' && current.role === 'customer') || (page === 'loja' && current.role === 'merchant');
+  const showPushSettings = pushAccount && (page === 'loja' || isInstalledApp());
   const name = page === 'cliente' && profile ? profile.name : page === 'admin' ? 'Administrador' :
     current.operator_login || current.email;
   const customerPhoto = page === 'cliente' && profile;
@@ -241,10 +253,10 @@ function account() {
     icon('camera') + (profile.photo ? 'Trocar foto de perfil' : 'Adicionar foto de perfil') + '</button>' +
     '<p class="muted">Sua foto aparece nos pedidos recebidos pelos estabelecimentos.</p><p class="muted" data-photo-status role="status"></p>' +
     '<p class="form-error" data-form-error role="alert"></p><div data-save-profile-photo hidden><button class="btn primary wide" type="submit" disabled>Salvar foto</button></div></form>' :
-    '<p class="dialog-copy">' + esc(name) + '</p>') + (pushAccount ? pushSettingsMarkup() : '') + '<div class="order-actions">' +
+    '<p class="dialog-copy">' + esc(name) + '</p>') + (showPushSettings ? pushSettingsMarkup() : '') + '<div class="order-actions">' +
     (canChangePassword ? '<button class="btn primary" data-change-password>Alterar senha</button>' : '') +
     '<button class="btn outline" data-logout>Sair</button></div>');
-  if (pushAccount) void bindPushSettings($('[data-push-settings]',el),active=>{pushBanner.hidden=active;});
+  if (showPushSettings) void bindPushSettings($('[data-push-settings]',el),active=>{if (merchantPushBanner) merchantPushBanner.hidden=active;});
   if (customerPhoto) {
     const actor = current.id;
     const form = $('#profile-photo-form',el);
@@ -293,6 +305,7 @@ function account() {
       await api('logout', {});
       current = null;
       profile = null;
+      promptedAccount = null;
       el.close();
       renderApp();
     } catch (error) { toast(error.message); }
@@ -322,6 +335,10 @@ function openActivation() {
 const context = { get user() { return current; }, signIn:auth, openAccount:account };
 app = page === 'cliente' ? null : page === 'loja' ? merchant(context) : operations(page,context);
 footer();
+if (page === 'cliente') {
+  installer.suggest();
+  window.addEventListener('pageshow',event=>{if (event.persisted) installer.suggest();});
+}
 renderApp();
 openActivation();
 

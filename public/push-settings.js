@@ -1,24 +1,16 @@
-import { $,api,command,icon } from './shared.js';
-import { bindOrderSound } from './order-sound.js';
-import { appWorkerScope,isAndroid,registerAppWorker } from './install.js';
+import { $,api,command,icon,modal } from './shared.js';
+import { bindOrderSound,canEnableOrderSound } from './order-sound.js';
+import { appWorkerScope,isAndroid,isAppleMobile,isInstalledApp,registerAppWorker } from './install.js';
 
+const pushControls = () => '<button type="button" class="btn primary" data-push-toggle hidden>' + icon('bell') +
+  '<span>Ativar notificações</span></button><p class="muted" data-push-status role="status"></p>';
+const soundControls = '<button type="button" class="btn primary" data-order-sound hidden>Ativar som</button>' +
+  '<p class="muted" data-order-sound-status role="status"></p>';
 export const pushSettingsMarkup = () => '<section class="push-settings" data-push-settings><h3>Notificações neste dispositivo</h3>' +
-  '<p class="muted" data-push-status role="status">Verificando disponibilidade…</p>' +
-  '<div class="push-settings-actions"><button type="button" class="btn primary" data-push-toggle hidden>' + icon('bell') +
-  '<span>Ativar notificações</span></button><button type="button" class="btn outline" data-push-test hidden>Enviar teste para este aparelho</button>' +
-  '<button type="button" class="btn outline" data-push-local-test hidden>Testar exibição no Android</button></div>' +
-  '<p class="muted" data-push-test-status role="status" hidden></p>' +
-  '<div class="push-settings-actions"><button type="button" class="btn outline" data-order-sound hidden></button></div>' +
-  '<p class="muted" data-order-sound-status role="status"></p></section>';
+  pushControls() + '<div data-sound-controls hidden>' + soundControls + '</div></section>';
 
-function iosNeedsInstallation() {
-  const appleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  return appleMobile && navigator.standalone !== true && !matchMedia('(display-mode: standalone)').matches &&
-    !matchMedia('(display-mode: fullscreen)').matches;
-}
-
-const canPush = () => 'Notification' in window && 'PushManager' in window && !!navigator.serviceWorker;
+const canPush = () => (isInstalledApp() || (location.pathname === '/loja/' && !isAppleMobile())) &&
+  'Notification' in window && 'PushManager' in window && !!navigator.serviceWorker;
 
 async function readyWorker() {
   const worker = await registerAppWorker();
@@ -58,7 +50,7 @@ async function removeRegistration(subscription) {
 }
 
 export async function pushActive() {
-  if (iosNeedsInstallation() || !canPush() || Notification.permission !== 'granted') return false;
+  if (!canPush() || Notification.permission !== 'granted') return false;
   const scope = appWorkerScope();
   const worker = await navigator.serviceWorker.getRegistration(scope);
   if (worker?.scope !== new URL(scope,location.origin).href) return false;
@@ -74,29 +66,23 @@ export async function disconnectPush() {
   if (legacy?.endpoint !== subscription?.endpoint) await removeRegistration(legacy);
 }
 
-const testResults = {
-  sent:'O serviço de notificações aceitou o teste. Confira a central de notificações do aparelho.',
-  skipped:'O aparelho perdeu a inscrição. Ative as notificações para testar de novo.',
-  failed:'O serviço de notificações não aceitou o teste. Desative e ative as notificações para tentar de novo.',
-  inactive:'O aparelho perdeu a inscrição. Ative as notificações para tentar de novo.'
-};
+function syncPermissionMessage(status) {
+  status.textContent = isAndroid() ? 'Permita as notificações em Configurações › Apps › Fly Delivery › Notificações.' :
+    'Permita as notificações em Ajustes › Notificações › Fly Delivery.';
+}
 
-export async function bindPushSettings(root,onChange = ()=>{}) {
-  bindOrderSound(root);
+async function bindPushControl(root,{activationOnly = false,onChange = ()=>{}} = {}) {
   const button = $('[data-push-toggle]',root);
-  const test = $('[data-push-test]',root);
-  const localTest = $('[data-push-local-test]',root);
-  const android = isAndroid();
   const status = $('[data-push-status]',root);
-  const testStatus = $('[data-push-test-status]',root);
-  if (iosNeedsInstallation()) {
-    status.textContent = 'No iPhone ou iPad, adicione o Fly Delivery à Tela de Início e abra pelo ícone instalado.';
-    return;
-  }
   if (!canPush()) {
-    status.textContent = 'Este navegador não oferece notificações push para o Fly Delivery.';
+    status.textContent = 'Abra o Fly Delivery pelo ícone instalado para ativar notificações.';
     return;
   }
+  if (Notification.permission === 'denied') {
+    syncPermissionMessage(status);
+    return;
+  }
+  status.textContent = 'Preparando as notificações…';
   try {
     const [{publicKey},worker] = await Promise.all([api('push-config'),readyWorker()]);
     if (!root.isConnected) return;
@@ -105,7 +91,7 @@ export async function bindPushSettings(root,onChange = ()=>{}) {
     let active = !!subscription && (await command('push_subscription_status',{endpoint:subscription.endpoint})).active;
     const key = Uint8Array.from(atob(publicKey.replaceAll('-','+').replaceAll('_','/')),char=>char.charCodeAt(0));
 
-    // Retire only this account's old server entry. The other Fly Delivery app may still use the root registration.
+    // Retire only this account's old server entry. Another Fly Delivery app may still use the root registration.
     async function retireLegacy() {
       const legacy = await legacySubscription();
       if (legacy && legacy.endpoint !== subscription?.endpoint) {
@@ -115,87 +101,80 @@ export async function bindPushSettings(root,onChange = ()=>{}) {
 
     function update() {
       const blocked = Notification.permission === 'denied';
-      button.hidden = blocked;
+      button.hidden = blocked || (activationOnly && active);
       button.classList.toggle('primary',!active);
       button.classList.toggle('outline',active);
-      test.hidden = blocked || !active;
-      localTest.hidden = !android || Notification.permission !== 'granted';
       $('span',button).textContent = active ? 'Desativar notificações' : 'Ativar notificações';
-      status.textContent = blocked ? (android ? 'No Android, abra Configurações › Apps › Fly Delivery › Notificações e permita os avisos. Se estiver no navegador, confira as permissões do Chrome.' :
-        'Permita as notificações nas configurações do aparelho ou do navegador e reabra o app.') :
-        active ? 'Inscrição de notificações ativa neste aparelho.' :
-        android ? 'Ative neste aparelho para receber os avisos de pedidos.' : 'Receba avisos de pedidos mesmo com o app fechado.';
-      onChange(active && !blocked);
+      if (blocked) syncPermissionMessage(status);
+      else status.textContent = active && !activationOnly ? 'Notificações ativas neste aparelho.' : '';
     }
     update();
+    onChange(active);
 
     button.onclick = async () => {
-      button.disabled = test.disabled = localTest.disabled = true;
-      testStatus.hidden = true;
+      button.disabled = true;
       try {
         if (active) {
           await retireLegacy();
           await command('push_unsubscribe',{endpoint:subscription.endpoint});
           active = false;
         } else {
-          // Call subscribe directly from the tap, as required by Safari.
+          // Safari requires the subscription request to start in the tap handler.
           subscription ??= await worker.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
           const {keys} = subscription.toJSON();
           await command('push_subscribe',{endpoint:subscription.endpoint,p256dh:keys.p256dh,auth:keys.auth});
           active = true;
-          await retireLegacy();
+          await retireLegacy().catch(()=>{});
         }
         update();
+        onChange(active);
       } catch (error) {
         update();
-        if (Notification.permission !== 'denied') status.textContent = error.name === 'NotAllowedError' ? 'Toque em Ativar notificações e escolha Permitir.' :
-          error.name === 'AbortError' ? 'O navegador não conseguiu inscrever este aparelho. Verifique a conexão e tente de novo.' :
-          error.message || 'Não foi possível atualizar as notificações.';
-      } finally {
-        button.disabled = test.disabled = false;
-      }
-    };
-
-    localTest.onclick = async () => {
-      localTest.disabled = true;
-      testStatus.hidden = false;
-      try {
-        await worker.showNotification('Teste local do Fly Delivery',{
-          body:'Este aviso foi gerado no próprio aparelho.',
-          icon:'/assets/icon-192.png?v=motoboy',
-          data:{url:location.origin+appWorkerScope()}
-        });
-        testStatus.textContent = 'Confira se o aviso apareceu na central de notificações. Se não apareceu, confira as permissões e as categorias de notificação nas configurações do Android.';
-      } catch {
-        testStatus.textContent = 'O Android não conseguiu exibir o aviso. Confira a permissão de notificações do aplicativo.';
-      } finally { localTest.disabled = false; }
-    };
-
-    test.onclick = async () => {
-      button.disabled = test.disabled = localTest.disabled = true;
-      testStatus.hidden = false;
-      testStatus.textContent = 'Preparando o teste…';
-      try {
-        const endpoint = subscription.endpoint;
-        let {id,state} = await command('push_test',{endpoint});
-        if (state === 'pending') testStatus.textContent = 'Teste agendado. Você já pode bloquear a tela para conferir.';
-        for (let attempt=0;state==='pending' && attempt<8 && root.isConnected;attempt++) {
-          await new Promise(resolve=>setTimeout(resolve,3000));
-          if (!root.isConnected || !root.closest('dialog')?.open) return;
-          ({state} = await command('push_test_status',{endpoint,id}));
-        }
-        if (state === 'skipped' || (android && state === 'inactive')) {
-          if (await subscription.unsubscribe().catch(()=>false)) subscription = null;
-          else subscription = await worker.pushManager.getSubscription();
-        }
-        if (state === 'inactive' || state === 'skipped') {
-          active = false;
-          update();
-        }
-        testStatus.textContent = testResults[state] || 'O teste ainda está na fila. Confira a central de notificações em instantes.';
-      } catch (error) {
-        testStatus.textContent = error.message || 'Não foi possível enviar o teste.';
-      } finally { button.disabled = test.disabled = localTest.disabled = false; }
+        if (Notification.permission !== 'denied') status.textContent = error.name === 'NotAllowedError' ?
+          'Toque em Ativar notificações e escolha Permitir.' : error.name === 'AbortError' ?
+            'Verifique a conexão e tente ativar novamente.' : error.message || 'Não foi possível ativar as notificações.';
+      } finally { button.disabled = false; }
     };
   } catch (error) { status.textContent = error.message; }
+}
+
+export function bindPushSettings(root,onChange = ()=>{}) {
+  const sound = $('[data-sound-controls]',root);
+  const merchant = location.pathname === '/loja/';
+  sound.hidden = !merchant;
+  bindOrderSound(sound);
+  return bindPushControl(root,{onChange:active=>{sound.hidden = !merchant && !active;onChange(active);}});
+}
+
+function permissionCard(title,iconName,description,controls) {
+  return '<section class="permission-card"><span class="permission-icon">' + icon(iconName) + '</span>' +
+    '<h2 aria-hidden="true">' + title + '</h2><p class="permission-copy">' + description + '</p>' + controls + '</section>';
+}
+
+export async function promptCustomerPermissions(isCurrent) {
+  if (!canPush() || Notification.permission === 'denied') return;
+  const active = await pushActive().catch(()=>false);
+  const dialog = $('#dialog');
+  if (!isCurrent() || dialog.open) return;
+
+  function showSound(root) {
+    if (!isCurrent() || (root && (!root.isConnected || !dialog.open))) return;
+    if (!canEnableOrderSound()) {
+      if (root) dialog.close();
+      return;
+    }
+    const sound = modal('Ative também o som',permissionCard('Ative também o som','volume',
+      'Ouça um toque quando seu pedido mudar de etapa.',soundControls));
+    const card = $('.permission-card',sound);
+    bindOrderSound(card,{activationOnly:true,onEnabled:()=>{if (card.isConnected) dialog.close();}});
+    $('[data-order-sound]',card).focus();
+  }
+
+  if (active) return showSound();
+  const notification = modal('Ative as notificações',permissionCard('Ative as notificações','bell',
+    'Acompanhe seu pedido mesmo com o app fechado.',pushControls()));
+  const root = $('.permission-card',notification);
+  await bindPushControl(root,{activationOnly:true,onChange:enabled=>{if (enabled) showSound(root);}});
+  const button = $('[data-push-toggle]',root);
+  if (root.isConnected && dialog.open && !button.hidden) button.focus();
 }

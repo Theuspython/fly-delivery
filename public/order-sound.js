@@ -39,27 +39,33 @@ export function playOrderSound(eventId) {
   chime();
 }
 
-export function bindOrderSound(root) {
+export const canEnableOrderSound = () => !!Audio && !enabled;
+
+async function setOrderSound(value) {
+  if (value) {
+    await unlock();
+    if (context.state !== 'running') throw new Error();
+  }
+  enabled = value;
+  try { localStorage.setItem(preference,enabled ? 'on' : 'off'); } catch {}
+}
+
+export function bindOrderSound(root,{activationOnly = false,onEnabled = ()=>{}} = {}) {
   if (!Audio) return;
   const button = root.querySelector('[data-order-sound]');
   const label = root.querySelector('[data-order-sound-status]');
-  button.hidden = false;
   function update() {
-    button.textContent = enabled ? 'Desativar som de pedidos' : 'Ativar e testar som de pedidos';
+    button.hidden = activationOnly && enabled;
+    button.textContent = enabled ? 'Desativar som de pedidos' : 'Ativar som';
     label.textContent = enabled ? 'Som de pedidos ativado neste aparelho.' : '';
   }
   update();
   button.onclick = async () => {
     button.disabled = true;
     try {
-      if (!enabled) {
-        await unlock();
-        if (context.state !== 'running') throw new Error();
-        chime();
-      }
-      enabled = !enabled;
-      try { localStorage.setItem(preference,enabled ? 'on' : 'off'); } catch {}
+      await setOrderSound(!enabled);
       update();
+      if (enabled) onEnabled();
     } catch {
       label.textContent = 'Toque novamente para liberar o som.';
     } finally { button.disabled = false; }
